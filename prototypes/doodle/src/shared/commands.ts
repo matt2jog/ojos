@@ -59,4 +59,6 @@ export interface OjosApi {
   setOverPanel(over: boolean): void
   /** The overlay normally never takes focus. Typing needs it, so the chat box asks for it. */
   setFocus(on: boolean): void
+  /** Open the Settings window (calibration, sensitivity, status). */
+  openSettings(): void
 }

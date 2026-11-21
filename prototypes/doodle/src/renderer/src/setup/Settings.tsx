@@ -9,6 +9,10 @@ interface Props {
   onRunSetup(): void
 }
 
+// Below 0.65 the trigger fires on ordinary thinking; above 0.95 it almost never fires.
+const MIN_SENS = 0.65
+const MAX_SENS = 0.95
+
 const LANE: Record<string, string> = { on: 'Running', starting: 'Starting…', off: 'Not installed', error: 'Error' }
 
 export function Settings({ vision, onRecalibrate, onRunSetup }: Props): React.JSX.Element {
@@ -19,7 +23,7 @@ export function Settings({ vision, onRecalibrate, onRunSetup }: Props): React.JS
   useEffect(() => {
     void window.setup.settings().then((v) => {
       setS(v)
-      setSens(v.sensitivity)
+      setSens(Math.min(MAX_SENS, Math.max(MIN_SENS, v.sensitivity)))
     })
     // Current calibration, read from the same local profile the vision session loads.
     void window.vision.geometry().then((g) => {
@@ -29,7 +33,9 @@ export function Settings({ vision, onRecalibrate, onRunSetup }: Props): React.JS
     })
   }, [])
 
-  const eager = sens <= 0.5 ? 'Eager: offers help often' : sens >= 0.8 ? 'Reserved: only when you look very stuck' : 'Balanced'
+  // The slider spans the whole track, but only maps onto the stable band of the score.
+  const level = (sens - MIN_SENS) / (MAX_SENS - MIN_SENS)
+  const eager = level <= 0.33 ? 'Eager: offers help sooner' : level >= 0.67 ? 'Reserved: only when you look very stuck' : 'Balanced'
 
   return (
     <main className="setup-body settings">
@@ -62,9 +68,9 @@ export function Settings({ vision, onRecalibrate, onRunSetup }: Props): React.JS
           <span>Eager</span>
           <input
             type="range"
-            min={0.35}
-            max={0.9}
-            step={0.05}
+            min={MIN_SENS}
+            max={MAX_SENS}
+            step={0.01}
             value={sens}
             onChange={(e) => setSens(Number(e.target.value))}
             onPointerUp={() => void window.setup.setSensitivity(sens)}
@@ -73,7 +79,7 @@ export function Settings({ vision, onRecalibrate, onRunSetup }: Props): React.JS
           <span>Reserved</span>
         </div>
         <div className="perm-why">
-          {eager}. Ojos appears when your confusion score stays above {sens.toFixed(2)} for a second.
+          {eager}.
         </div>
       </section>
 

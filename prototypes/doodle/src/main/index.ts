@@ -11,7 +11,7 @@ import { streamGemini, suggest } from './gemini'
 import { MOCK_SUGGESTIONS, streamMock } from './mock'
 import type { Cmd, Gaze, Suggestions, Turn } from '../shared/commands'
 import { openSetup, registerSetupIpc, selectedDisplay, setupDone, storeSet } from './setup'
-import { liveGaze, reloadVision, sensitivity, startVision } from './vision'
+import { clampSensitivity, liveGaze, reloadVision, sensitivity, startVision } from './vision'
 import { LOG_FILE } from './log'
 import { ensureRendererUrl } from './serve'
 
@@ -337,6 +337,7 @@ const modeLabel = (): string => (MOCK ? 'MOCK mode' : `${SUGGEST_MODEL} -> ${EXP
 
 registerSetupIpc()
 
+ipcMain.on('open-settings', () => runSetup('settings'))
 ipcMain.handle('settings:get', () => ({
   mock: MOCK,
   suggestModel: SUGGEST_MODEL,
@@ -348,7 +349,7 @@ ipcMain.handle('settings:get', () => ({
   platform: process.platform
 }))
 ipcMain.handle('settings:sensitivity', (_e, high: number) => {
-  storeSet('trigger.high', String(Math.min(0.95, Math.max(0.3, high))))
+  storeSet('trigger.high', String(clampSensitivity(high)))
   reloadVision()
 })
 
@@ -374,8 +375,15 @@ app.whenReady().then(async () => {
     app.dock.setIcon(nativeImage.createFromPath(join(app.getAppPath(), 'resources', 'icon.png')))
     app.dock.setMenu(dockMenu())
     const startedAt = Date.now()
-    app.on('activate', () => {
-      if (Date.now() - startedAt > 3000) runSetup('settings') // ignore the activation at launch
+    // Only a real Dock click should open Settings. macOS also sends 'activate' when one of our
+    // own windows takes focus (the chat box does), so require that no window is focused or visible
+    // besides the always-present overlay, and ignore the activation at launch.
+    app.on('activate', (_e, hasVisibleWindows) => {
+      const sinceStart = Date.now() - startedAt
+      const focused = BrowserWindow.getFocusedWindow()
+      console.log(`[dock] activate after ${sinceStart} ms, focused window: ${focused ? focused.getTitle() : 'none'}, visible: ${hasVisibleWindows}`)
+      if (sinceStart < 5000 || focused) return
+      runSetup('settings')
     })
   }
   await ensureRendererUrl()

@@ -392,6 +392,16 @@ export function Companion(props: Props): React.JSX.Element {
             <path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z" />
           </svg>
         </button>
+        <button
+          onClick={() => window.ojos.openSettings()}
+          aria-label="Settings and eye recalibration"
+          title="Settings · recalibrate eyes"
+        >
+          <svg viewBox="0 0 16 16" width="15" height="15">
+            <path d="M2.5 5h3.2M9.3 5h4.2M2.5 11h6.2M12.3 11h1.2" />
+            <path d="M5.7 5a1.8 1.8 0 1 0 3.6 0a1.8 1.8 0 1 0 -3.6 0M8.7 11a1.8 1.8 0 1 0 3.6 0a1.8 1.8 0 1 0 -3.6 0" />
+          </svg>
+        </button>
         <button onClick={onDismiss} aria-label="Close" title="Close">
           <svg viewBox="0 0 16 16" width="15" height="15">
             <path d="M4 4l8 8M12 4l-8 8" />
