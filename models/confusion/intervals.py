@@ -14,6 +14,16 @@ HIGH = 0.70
 LOW = 0.40
 
 
+@dataclass(frozen=True)
+class TriggerPolicy:
+    high: float = HIGH
+    low: float = LOW
+    confirm_us: int = CONFIRM_US
+
+
+DEMO_POLICY = TriggerPolicy(high=0.80, low=0.45, confirm_us=2_000_000)
+
+
 @dataclass
 class Run:
     time_us: int
@@ -22,13 +32,14 @@ class Run:
 
 
 class Intervals:
-    def __init__(self, session_id, model_version, source, capture_epoch=0):
+    def __init__(self, session_id, model_version, source, capture_epoch=0, *, policy=TriggerPolicy()):
         self.session_id = str(UUID(str(session_id)))
         if source not in ("live", "replay"):
             raise ValueError("Unknown source")
         self.model_version = model_version
         self.source = source
         self.capture_epoch = capture_epoch
+        self.policy = policy
         self.last_time = self.last_frame = None
         self.published_us = None
         self.reset_signal()
@@ -89,15 +100,15 @@ class Intervals:
         self.previous_usable = True
         score = self.smoothed
 
-        if score > LOW:
+        if score > self.policy.low:
             self.low_us = None
         elif self.low_us is None:
             self.low_us = time_us
             self.before_low = self.last_contributing
-        low_confirmed = self.low_us is not None and time_us - self.low_us >= CONFIRM_US
+        low_confirmed = self.low_us is not None and time_us - self.low_us >= self.policy.confirm_us
         if self.active:
             deadline = self.active.time_us + HARD_CAP_US
-            if low_confirmed and self.low_us + CONFIRM_US <= deadline:
+            if low_confirmed and self.low_us + self.policy.confirm_us <= deadline:
                 return self.publish(self.low_us, self.before_low, time_us)
             if time_us >= deadline:
                 return self.publish(deadline, self.last_contributing, time_us)
@@ -110,12 +121,12 @@ class Intervals:
             if low_confirmed and time_us - self.published_us >= COOLDOWN_US:
                 self.published_us = None
             return None
-        if self.warm_us < WARMUP_US or score < HIGH:
+        if self.warm_us < WARMUP_US or score < self.policy.high:
             self.high = None
             return None
         if self.high is None:
             self.high = Run(time_us, frame_id, score)
         self.high.peak = max(self.high.peak, score)
-        if time_us - self.high.time_us >= CONFIRM_US:
+        if time_us - self.high.time_us >= self.policy.confirm_us:
             self.active, self.high = self.high, None
         return None

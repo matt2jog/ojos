@@ -17,9 +17,12 @@ async function start(config) {
   fitTargets = config.fitTargets;
   fitEnd = fitTargets?.at(-1)?.end;
   supports = new Map();
-  const files = await FilesetResolver.forVisionTasks(location.origin + "/dist/mp");
+  const assets = new URL(config.assetsBaseUrl ?? "./", self.location.href);
+  if (!assets.pathname.endsWith("/")) assets.pathname += "/";
+  const asset = name => new URL(name, assets).href;
+  const files = await FilesetResolver.forVisionTasks(asset("mp"));
   detector = await FaceLandmarker.createFromOptions(files, {
-    baseOptions: { modelAssetPath: location.origin + "/dist/face_landmarker.task", delegate: config.landmarkDelegate ?? "CPU" },
+    baseOptions: { modelAssetPath: asset("face_landmarker.task"), delegate: config.landmarkDelegate ?? "CPU" },
     runningMode: "VIDEO", ...TRACKING_OPTIONS,
   });
   const [width, height] = config.dimensions;
@@ -29,16 +32,17 @@ async function start(config) {
 
   if (variant !== "mp") {
     if (config.backend === "wasm") {
-      setWasmPaths(location.origin + "/dist/tf/");
+      setWasmPaths(asset("tf/"));
       setThreadsCount(config.tfThreads ?? 1);
     }
     if (!(await tf.setBackend(config.backend))) throw new Error("Cannot enable " + config.backend);
     await tf.ready();
     wet = new WebEyeTrack();
     blaze = fitTargets ? wet.blazeGaze : new BlazeGaze();
-    await blaze.loadModel(location.origin + "/dist");
+    await blaze.loadModel(asset("").replace(/\/$/, ""));
   }
-  adapter = createAdapter("6e11c35d-881d-5bc9-9a12-0af89fbd92d6", 0, config.geometry, config.profile);
+  adapter = createAdapter(config.sessionId ?? "6e11c35d-881d-5bc9-9a12-0af89fbd92d6",
+    config.captureEpoch ?? 0, config.geometry, config.profile);
   const gl = config.backend === "webgl" && variant !== "mp" ? tf.backend().getGPGPUContext?.().gl : null;
   const debug = gl?.getExtension("WEBGL_debug_renderer_info");
   return { tfBackend: variant === "mp" ? null : tf.getBackend(), threads: config.tfThreads ?? 1,

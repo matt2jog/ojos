@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Ojos test recorder</title>
+    <link rel="stylesheet" href="styles.css">
+    <script type="module" src="record.js"></script>
+  </head>
+  <body>
+    <main>
+      <h1>Ojos test recorder</h1>
+      <p>Record your webcam and one display with playback audio.</p>
+      <dl><div><dt>Save to</dt><dd id="folder-name" aria-live="polite">Checking the local save folder…</dd></div></dl>
+      <div class="controls">
+        <button class="primary" id="start" type="button" aria-describedby="start-help" disabled>Choose screen and start</button>
+        <button class="primary" id="stop" type="button" aria-describedby="stop-help" hidden>Stop and save</button>
+        <button id="calibrate" type="button" aria-describedby="calibration-help" hidden>Calibrate gaze</button>
+        <button id="tone" type="button" hidden>Play a test tone</button>
+      </div>
+      <p id="start-help">In the browser picker, select <strong>Entire Screen</strong>, turn on <strong>system audio</strong>, and click <strong>Share</strong>. Allow webcam access when prompted. Recording starts once both sources are ready.</p>
+      <p id="stop-help" hidden>Keep this tab open while you take the test. <strong>Stop and save</strong> ends webcam and screen capture, then finishes saving both video files and <code>capture.json</code>.</p>
+      <p id="status" role="status">Connecting to the local recorder…</p>
+      <video id="preview" muted autoplay playsinline hidden aria-label="Webcam preview"></video>
+      <p id="calibration-help" hidden>Keep this window on the display you shared. Calibrate before the test by looking at each dot as it appears. Press Esc to cancel.</p>
+      <p><a href="../reasoning-test/" target="_blank" rel="noopener">Open the reasoning test in a new tab</a></p>
+    </main>
+    <section id="calibration-screen" aria-label="Gaze calibration" tabindex="-1" hidden>
+      <p id="calibration-countdown" role="status"></p>
+      <div id="calibration-dot" aria-hidden="true" hidden></div>
+    </section>
+  </body>
+</html>

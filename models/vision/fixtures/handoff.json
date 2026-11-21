@@ -1,0 +1,21 @@
+{
+  "sessionId": "77510d91-432d-4c51-b2e6-59cb27986589",
+  "captureEpoch": 0,
+  "clipStartUs": 4000000,
+  "clipEndUs": 4600000,
+  "width": 1920,
+  "height": 1200,
+  "confusionModel": "confusion-devemo-plus-gru-8hz-1",
+  "model1": [
+    {"session_id":"77510d91-432d-4c51-b2e6-59cb27986589","capture_epoch":0,"time_us":4000000,"x_px":940,"y_px":382,"uncertainty_radius_px":147,"valid":true},
+    {"session_id":"77510d91-432d-4c51-b2e6-59cb27986589","capture_epoch":0,"time_us":4200000,"x_px":955,"y_px":390,"uncertainty_radius_px":147,"valid":true}
+  ],
+  "model2": [
+    {"session_id":"77510d91-432d-4c51-b2e6-59cb27986589","capture_epoch":0,"time_us":4010000,"x_px":990,"y_px":405,"uncertainty_radius_px":142,"valid":true},
+    {"session_id":"77510d91-432d-4c51-b2e6-59cb27986589","capture_epoch":0,"time_us":4200000,"x_px":null,"y_px":null,"uncertainty_radius_px":null,"valid":false}
+  ],
+  "confusion": [
+    {"session_id":"77510d91-432d-4c51-b2e6-59cb27986589","capture_epoch":0,"time_us":3990000,"confidence":0.82,"confidence_raw":0.91,"valid":true},
+    {"session_id":"77510d91-432d-4c51-b2e6-59cb27986589","capture_epoch":0,"time_us":4200000,"confidence":null,"confidence_raw":null,"valid":false}
+  ]
+}

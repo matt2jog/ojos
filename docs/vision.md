@@ -2,6 +2,8 @@
 
 The vision developer owns the two laptop pipelines fed by one webcam. Confusion inference emits an interval when the face signal suggests the user may want help. Gaze estimation emits positions and uncertainty for that display. The desktop developer can integrate both outputs using replay before a trained model is available. [Shared protocol](protocol.md)
 
+The [model integration README](../models/README.md) records the implemented WebEyeTrack and ETH-XGaze pair, the conservative demo trigger and the measured Windows rate profile. This document preserves the original research and baseline plan.
+
 ## Data and evaluation
 
 | Source | What to use | Limits |
