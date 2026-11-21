@@ -32,8 +32,13 @@ export const visionAvailable = (): { confusion: boolean; model1: boolean } => ({
 })
 
 /** Confusion score that must hold before a nudge: Settings value, then env, then 0.65. */
-export const sensitivity = (): number =>
-  Number(storeGet('trigger.high')) || Number(process.env.OJOS_TRIGGER_HIGH) || 0.65
+export const SENSITIVITY_RANGE = [0.65, 0.95] as const
+export const clampSensitivity = (v: number): number => Math.min(SENSITIVITY_RANGE[1], Math.max(SENSITIVITY_RANGE[0], v))
+export const sensitivity = (): number => {
+  const stored = Number(storeGet('trigger.high'))
+  if (stored) return clampSensitivity(stored) // user setting: always inside the stable band
+  return Number(process.env.OJOS_TRIGGER_HIGH) || SENSITIVITY_RANGE[0] // dev override may go outside it
+}
 
 /** Apply changed settings or a new calibration: fresh capture epoch in the vision window. */
 export function reloadVision(): void {
