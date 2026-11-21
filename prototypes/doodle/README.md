@@ -33,4 +33,8 @@ With no key, the app falls back to mock mode. On macOS, the first real run needs
 | Cmd+Shift+X | Dismiss |
 | Cmd+Shift+Q | Quit |
 
+First launch opens the setup window (permissions, display, eye calibration). Re-run it with `npm run dev -- --setup` or from the menu-bar icon.
+
+Dev flags: `OJOS_USER_DATA=<dir>` uses a throwaway data folder; `--setup-step=<welcome|permissions|display|calibrate|done>` opens setup at a step; `--autopilot` runs calibration without camera or full screen; `--snapshot-setup=<file.png> --snapshot-delay=<ms>` saves a screenshot of the setup window and exits.
+
 A pill at the bottom of the screen confirms the app started. Clicks pass through to your apps except on the mascot, pills and panel.

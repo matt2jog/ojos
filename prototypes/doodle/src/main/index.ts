@@ -2,12 +2,13 @@
 // Flow: confusion event (hotkey for now) -> mascot + suggested questions -> user picks one
 // -> answer streams into the side panel (text only; doodles behind --doodles).
 // The mouse pointer stands in for gaze until the eye tracker is wired in.
-import { app, BrowserWindow, globalShortcut, screen, desktopCapturer, ipcMain, type Display } from 'electron'
+import { app, BrowserWindow, globalShortcut, screen, desktopCapturer, ipcMain, Menu, nativeImage, Tray, type Display } from 'electron'
 import { join } from 'path'
 import { readFileSync, writeFileSync } from 'fs'
 import { streamGemini, suggest } from './gemini'
 import { MOCK_SUGGESTIONS, streamMock } from './mock'
 import type { Cmd, Gaze, Suggestions } from '../shared/commands'
+import { openSetup, registerSetupIpc, selectedDisplay, setupDone } from './setup'
 
 // Load .env without extra deps.
 try {
@@ -30,7 +31,7 @@ let display: Display
 let runId = 0
 
 function createOverlay(): void {
-  display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+  display = selectedDisplay()
   win = new BrowserWindow({
     ...display.bounds,
     transparent: true,
@@ -90,8 +91,11 @@ function setPickKeys(on: boolean): void {
   )
 }
 
+let paused = false
+
 /** Confusion detected: show the mascot and start guessing the question. Never explains on its own. */
 async function nudge(): Promise<void> {
+  if (paused) return
   const myRun = ++runId
   const gaze = currentGaze()
   const png = MOCK ? null : captureScreen()
@@ -167,9 +171,88 @@ ipcMain.on('nudge-hidden', () => {
 })
 ipcMain.on('mouse', (_e, overUi: boolean) => win.setIgnoreMouseEvents(!overUi, { forward: true }))
 
+// ---------- menu-bar / tray ----------
+let tray: Tray | null = null
+
+function refreshTray(): void {
+  if (!tray) return
+  tray.setToolTip(paused ? 'Ojos (paused)' : 'Ojos')
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: paused ? 'Ojos is paused' : 'Ojos is watching for confusion', enabled: false },
+      { type: 'separator' },
+      { label: 'Help me with this now', accelerator: 'CommandOrControl+Shift+O', click: () => void nudge() },
+      {
+        label: paused ? 'Resume' : 'Pause',
+        click: () => {
+          paused = !paused
+          if (paused) dismiss()
+          refreshTray()
+        }
+      },
+      { label: 'Recalibrate eyes…', click: () => runSetup('calibrate') },
+      { label: 'Run setup again…', click: () => runSetup('welcome') },
+      { type: 'separator' },
+      { label: 'Quit Ojos', accelerator: 'CommandOrControl+Shift+Q', click: () => app.quit() }
+    ])
+  )
+}
+
+function createTray(): void {
+  const icon = nativeImage.createFromPath(join(app.getAppPath(), 'resources', 'trayTemplate.png'))
+  icon.setTemplateImage(true)
+  tray = new Tray(icon)
+  refreshTray()
+}
+
+/** Show the setup window; the overlay is (re)created on the chosen display when it closes. */
+function runSetup(startAt: string): void {
+  paused = true
+  dismiss()
+  const setupWin = openSetup({
+    startAt,
+    query: process.argv.includes('--autopilot') ? 'autopilot' : undefined,
+    onDone: () => {
+      paused = false
+      if (win && !win.isDestroyed() && String(selectedDisplay().id) !== String(display.id)) {
+        win.destroy()
+        createOverlay()
+        win.webContents.once('did-finish-load', () => win.webContents.send('ready', `${modeLabel()}|${modKey()}`))
+      }
+      refreshTray()
+    }
+  })
+  const snapFile = argValue('snapshot-setup')
+  if (snapFile && setupWin) {
+    setupWin.webContents.once('did-finish-load', () =>
+      setTimeout(async () => {
+        writeFileSync(snapFile, (await setupWin.webContents.capturePage()).toPNG())
+        app.exit(0)
+      }, Number(argValue('snapshot-delay') ?? 2500))
+    )
+  }
+}
+
+const modKey = (): string => (process.platform === 'darwin' ? 'Cmd' : 'Ctrl')
+const modeLabel = (): string => (MOCK ? 'MOCK mode' : `${SUGGEST_MODEL} -> ${EXPLAIN_MODEL}`)
+
+registerSetupIpc()
+
+// Dev aids: isolated data folder, and setup screenshots (--setup-step=<step> --autopilot
+// --snapshot-setup=<file.png> --snapshot-delay=<ms>).
+if (process.env.OJOS_USER_DATA) app.setPath('userData', process.env.OJOS_USER_DATA)
+const argValue = (name: string): string | undefined =>
+  process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3)
+
+app.on('window-all-closed', () => {
+  /* stay alive in the menu bar */
+})
+
 app.whenReady().then(() => {
   if (process.platform === 'darwin') app.dock?.hide()
   createOverlay()
+  createTray()
+  if (!setupDone() || process.argv.includes('--setup') || argValue('setup-step')) runSetup(argValue('setup-step') ?? 'welcome')
 
   const keys: Record<string, () => void> = {
     'CommandOrControl+Shift+O': () => {
@@ -184,8 +267,8 @@ app.whenReady().then(() => {
   }
 
   const mac = process.platform === 'darwin'
-  const mod = mac ? 'Cmd' : 'Ctrl'
-  const mode = MOCK ? 'MOCK mode' : `${SUGGEST_MODEL} -> ${EXPLAIN_MODEL}`
+  const mod = modKey()
+  const mode = modeLabel()
   console.log(`Ojos ready (${mode}${DOODLES ? ', doodles on' : ''}).`)
   console.log(`  ${mod}+Shift+O = confusion event (point the mouse at what confuses you first)`)
   console.log(`  ${mac ? 'Option' : 'Alt'}+1/2/3 = pick a suggested question`)

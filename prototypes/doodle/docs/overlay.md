@@ -21,7 +21,24 @@ The overlay is a transparent, always-on-top, click-through window. Only the masc
 
 **Secondary feature, off by default:** live doodles. The explainer can also stream drawing commands, and hand-drawn circles, arrows, underlines, highlights and labels animate on the real screen in step with the text. Enable it with `--doodles`.
 
-## Running the prototype
+## First-run setup
+
+Shown on first launch, from the tray ("Run setup again…", "Recalibrate eyes…"), or with `--setup`. One branded window:
+
+1. **Welcome:** mascot, tagline, privacy notes.
+2. **Permissions:** camera, Screen Recording (macOS) and system audio (macOS: comes with Screen Recording; Windows: none needed). Rows poll their status, "Allow" uses the OS prompt and "Open Settings" deep-links to the right pane. macOS needs a restart after Screen Recording is granted, so a "Restart Ojos" link is provided. A round, mirrored camera preview confirms the camera works.
+3. **Display:** choose which screen to record and calibrate. Skipped when there's only one.
+4. **Calibration:** full screen on that display. It runs on `EnsembleCalibration` from `models/vision`: 9 fit targets, then 5 validation targets. Each target is marked shown only after it's painted, held through `collectUntilUs`, then given 150 ms for late observations before `finishTarget`. Esc skips.
+5. **Results:** per-model pass/fail with typical error against the limit. Passing profiles are saved with `saveTrackerProfile`, along with the calibration geometry. Retry, or continue without gaze (confusion still works).
+6. **Done:** a three-line "how it works", then the app lives in the menu bar or tray (Help me now, Pause/Resume, Recalibrate, Quit).
+
+Storage is a JSON file in the app's user-data folder (`ojos-store.json`). It holds settings, the chosen display and calibration profiles, and never leaves the laptop.
+
+**Gaze source.** `src/renderer/src/setup/gazeSource.ts` decides where calibration observations come from. On Matt's laptop it should be `VisionSession`'s `onObservation` (WebEyeTrack in a renderer worker, ETH-XGaze through `native_worker.py`). Everywhere else a simulated source turns the mouse into raw rows of the same shape, so the real fit, validation and saving all run. The screen shows a "simulated" tag in that case. Wiring the live source is the next integration step.
+
+**Geometry.** The camera ID and size come from the opened 720p track. The display ID, scale and rotation come from Electron. The encoded viewport is physical pixels scaled down to at most 1920 wide, so the recorder must encode at the same size.
+
+
 
 [prototypes/doodle/](../) uses Electron + electron-vite + React + TypeScript and targets macOS and Windows.
 
