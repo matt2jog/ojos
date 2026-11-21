@@ -34,6 +34,9 @@ INSTRUCTION = (
     "Call tools when useful, including several dependent calls. Cite file references with lines and web sources with URLs. "
     "The file tools can read only configured roots. Never request credentials or send local file excerpts to web tools. "
     "Use remember only for decisions or preferences the user wants saved. Use recall if recent context is insufficient. "
+    "Screen gaze samples use clip-relative microseconds and encoded viewport pixels. average_x/average_y "
+    "give the fused point, maxbox bounds its uncertainty, and the model1/model2 coordinates are individual "
+    "estimates. Null means unavailable. Use the region to inspect evidence and state uncertainty when warranted."
 )
 
 

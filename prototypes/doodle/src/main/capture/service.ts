@@ -272,19 +272,21 @@ export class RecordingService {
     const sidecar: VisionExport = vision ?? exportVisionSeries({ sessionId: spec.sessionId, captureEpoch: spec.epoch,
       clipStartUs: start, clipEndUs: end, width: spec.viewportWidth, height: spec.viewportHeight })
     const evidenceUs = Math.min(end, clip.manifest.event_end_us)
-    const sample = sidecar.gaze.samples.slice(0, Math.floor((evidenceUs - start) / 200_000) + 1)
-      .slice(-5).findLast((sample) => sample.average_x !== null && sample.average_y !== null)
+    const still = clip.frames.findLast((frame) => frame.timeUs < evidenceUs) ?? clip.frames[0]
+    const stillTimeUs = still.timeUs - start
+    const evidence = { ...sidecar.gaze, samples: sidecar.gaze.samples
+      .filter((point) => point.time_us <= stillTimeUs && stillTimeUs - point.time_us <= 1_000_000).slice(-5) }
+    const sample = evidence.samples.findLast((sample) => sample.average_x !== null && sample.average_y !== null)
     const gaze = sample ? {
       x: Math.round(sample.average_x! / spec.viewportWidth * 1000),
       y: Math.round(sample.average_y! / spec.viewportHeight * 1000)
     } : undefined
-    const still = clip.frames.findLast((frame) => frame.timeUs < evidenceUs) ?? clip.frames[0]
     const result = { ...clip, ...sidecar, manifest: { ...clip.manifest, gaze_status: sidecar.gaze_status } }
     const save = this.#exporting.then(() => {
       request.throwIfAborted()
       return writeBundle(result, app.getPath('temp'), { signal: request })
     })
     this.#exporting = save.catch(() => {})
-    return { saved: save, still: still.jpeg.toString('base64'), gaze }
+    return { saved: save, still: still.jpeg.toString('base64'), gaze, evidence, stillTimeUs }
   }
 }

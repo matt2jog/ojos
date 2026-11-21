@@ -43,6 +43,7 @@ class FixtureProvider:
     name = "test-provider"
 
     def generate(self, *, system_instruction, context, video, frames, response_schema):
+        self.context = context
         return Generation(_analysis_at(frames[0][0]))
 
 
@@ -142,7 +143,8 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(analysis["summary"], compat["answer"])
 
     def test_desktop_gaze_v2_available_and_score_only(self):
-        self.server.state.analyzer = BaselineAnalyzer(FixtureProvider())
+        provider = FixtureProvider()
+        self.server.state.analyzer = BaselineAnalyzer(provider)
         width = self.manifest["viewport_width_px"]
         height = self.manifest["viewport_height_px"]
         duration = self.manifest["clip_end_us"] - self.manifest["clip_start_us"]
@@ -153,10 +155,15 @@ class ServerTests(unittest.TestCase):
                 "viewport_width_px": width, "viewport_height_px": height, "samples": samples}
         score_only = self.submit(str(uuid4()), gaze=gaze, gaze_status="unavailable")
         self.assertEqual(self.events(score_only)[-2:], ["job.analysis", "job.result"])
-        samples[0].update(average_x=25, average_y=25, maxbox={"x": 20, "y": 20, "w": 10, "h": 10},
-                          fusion_mode="model1_only")
+        box = {"x": 20, "y": 20, "w": 10, "h": 10}
+        samples[0].update(average_x=25, average_y=25, maxbox=box,
+                          x_model1=21, y_model1=23, x_model2=29, y_model2=27, fusion_mode="paired")
         with_gaze = self.submit(str(uuid4()), offset=1_000_000, gaze=gaze, gaze_status="available")
         self.assertEqual(self.events(with_gaze)[-2:], ["job.analysis", "job.result"])
+        sent = provider.context["gaze"][0]
+        for key in ("time_us", "x_model1", "y_model1", "x_model2", "y_model2",
+                    "average_x", "average_y", "maxbox", "confidence"):
+            self.assertEqual(sent[key], samples[0][key])
         error = self.submit(str(uuid4()), gaze={**gaze, "viewport_width_px": width + 1},
                             gaze_status="available", expected=400)
         self.assertIn("gaze geometry", error)

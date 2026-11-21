@@ -88,7 +88,7 @@ This is the legacy single-tracker gaze sidecar. It uses a sorted 200,000 µs gri
 
 ### Gaze and confusion sidecar v2
 
-`exportVisionSeries` in [`models/vision/index.mjs`](../models/vision/index.mjs) returns `{gaze_status, gaze}`. Place `gaze_status` in the manifest and send `gaze` as the multipart JSON part. The [local clip assistant](../agentic_system/assistant/README.md) reads the fused point and box and passes bounded gaze hints with the screen video and a still. The Gemini request sends fused gaze hints. Playback audio is opt-in. The full sidecar makes those numeric fields available for future experiments.
+`exportVisionSeries` returns `{gaze_status, gaze}`. Place `gaze_status` in the manifest and send `gaze` as the multipart JSON part. The local assistant sends selected gaze rows with the screen video and a still. Each valid version 2 hint includes both tracker coordinate pairs, the mean, the max box, and the smoothed confusion score when available. The initial chat turn includes up to five nearby hints and the still's clip-relative timestamp. [Vision exporter](../models/vision/index.mjs) · [Local assistant](../agentic_system/assistant/README.md)
 
 ```json
 {
@@ -149,7 +149,7 @@ Result `status` is `answered` or `insufficient_evidence`. For insufficient evide
 
 Electron generates a chat UUID on selection of a fresh suggestion. Its local service accepts one active turn per chat. Requests use the same local bearer authentication as clip jobs.
 
-- `POST /v1/chats/{chat_id}/messages` takes `{"turn_id":"a-client-generated-uuid","message":"How can I confirm the folder?"}`. The initial turn may add `screen_context` (JSON encoded as a string), `jpeg_base64`, and `doodles`.
+- `POST /v1/chats/{chat_id}/messages` takes `{"turn_id":"a-client-generated-uuid","message":"How can I confirm the folder?"}`. The initial turn may add `screen_context` (JSON encoded as a string), `jpeg_base64`, and `doodles`. Screen context contains `clip_summary`, `still_time_us`, and gaze rows in clip-relative time and encoded viewport pixels.
 - The response is SSE with `turn.status`, `turn.delta`, optional `turn.doodle`, and `turn.usage`. `turn.done` carries the saved answer in `text`. `turn.error` carries a displayable `message`. Retrying a completed turn ID returns the saved answer in the same chat.
 - `GET /v1/chats/{chat_id}/history` returns up to 30 completed turns under `turns` in chronological order.
 

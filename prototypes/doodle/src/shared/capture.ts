@@ -38,7 +38,25 @@ export type Interval = {
 }
 export type VisionExport = {
   gaze_status: 'available' | 'unavailable'
-  gaze: { samples: Array<{ average_x: number | null; average_y: number | null }> }
+  gaze: {
+    timebase: 'clip_relative_us'
+    viewport_width_px: number
+    viewport_height_px: number
+    samples: VisionSample[]
+  }
+}
+export type ViewportRect = { x: number; y: number; w: number; h: number }
+export type VisionSample = {
+  time_us: number
+  confidence: number | null
+  average_x: number | null
+  average_y: number | null
+  x_model1: number | null
+  y_model1: number | null
+  x_model2: number | null
+  y_model2: number | null
+  maxbox: ViewportRect | null
+  fusion_mode: 'paired' | 'model1_only' | 'model2_only' | 'unavailable'
 }
 export type Observation = { tracker: Tracker; timeUs: number; raw: unknown }
 export type NativeLane = 'confusion' | 'model2'

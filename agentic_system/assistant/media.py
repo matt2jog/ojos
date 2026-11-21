@@ -189,7 +189,7 @@ def _validate_gaze_grid(value: Any, *, duration_us: int, width: int, height: int
 
 
 def _fused_gaze(sample: dict[str, Any], width: int, height: int) -> dict[str, Any] | None:
-    """Use Matt's fused point and region. Individual predictions stay out of the baseline prompt."""
+    """Validate the fused region and preserve both trackers’ estimates."""
     mode = sample.get("fusion_mode")
     box = sample.get("maxbox")
     if mode == "unavailable":
@@ -209,7 +209,20 @@ def _fused_gaze(sample: dict[str, Any], width: int, height: int) -> dict[str, An
             and 0 <= top <= y + epsilon and y - epsilon <= bottom <= height + epsilon):
         raise InputError("v2 fused gaze point or box is outside its encoded region")
     radius = math.hypot(max(x - left, right - x), max(y - top, bottom - y))
+    coordinates = {}
+    for tracker in ("model1", "model2"):
+        x_key, y_key = f"x_{tracker}", f"y_{tracker}"
+        raw_x, raw_y = sample.get(x_key), sample.get(y_key)
+        if raw_x is not None or raw_y is not None:
+            raw_x, raw_y = _number(raw_x, x_key), _number(raw_y, y_key)
+            if not (0 <= raw_x < width and 0 <= raw_y < height):
+                raise InputError("Individual gaze estimate is outside the viewport")
+        coordinates.update({x_key: raw_x, y_key: raw_y})
+    confidence = sample.get("confidence")
+    if confidence is not None and not 0 <= _number(confidence, "confusion confidence") <= 1:
+        raise InputError("Confusion confidence is outside 0–1")
     return {"time_us": sample["time_us"], "x_px": x, "y_px": y, "uncertainty_radius_px": radius,
+            "average_x": x, "average_y": y, **coordinates, "confidence": confidence,
             "valid": True, "fusion_mode": mode, "maxbox": {"x": left, "y": top, "w": w, "h": h}}
 
 

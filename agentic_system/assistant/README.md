@@ -1,6 +1,6 @@
 # Ojos assistant
 
-The local Python service uses Google ADK and Gemini 4 Hydrogen by default. Clip analysis returns a suspected sticking point, up to three suggested questions, a short summary, and clip-relative evidence. It reads the screen video, one timestamped still, and up to 16 gaze hints. Playback audio is opt-in through `OJOS_CLIP_PLAYBACK_AUDIO=1`.
+The local Python service uses Google ADK and Gemini 4 Hydrogen by default. Clip analysis returns a suspected sticking point, up to three suggested questions, a short summary, and clip-relative evidence. It reads the screen video, one timestamped still, and up to 16 gaze hints with both tracker predictions, their mean, and the max box. Playback audio is opt-in through `OJOS_CLIP_PLAYBACK_AUDIO=1`.
 
 ## Run locally
 
@@ -27,7 +27,7 @@ A bundle contains `video.mp4`, `manifest.json` and `gaze.json`. The service emit
 
 ## Chat
 
-The first message can include a JPEG and screen context. Later turns reuse the chat's ID. The local SQLite database stores completed turns, compacted summaries, indexed passages, and saved notes. The agent reuses a stable instruction and context prefix for Gemini's implicit cache. Usage events report cached tokens when Gemini supplies that count. The agent keeps recent turns verbatim and summarizes older turns to stay within its context budget.
+Selecting a suggestion opens a chat with a timestamped JPEG from the clip, its summary, and up to five nearby gaze samples in encoded viewport pixels. Later turns reuse the chat's ID. The local SQLite database stores completed turns, compacted summaries, indexed passages, and saved notes. The agent reuses a stable instruction and context prefix for Gemini's implicit cache. Usage events report cached tokens when Gemini supplies that count. The agent keeps recent turns verbatim and summarizes older turns to stay within its context budget.
 
 ADK can make dependent calls across the file, PDF, passage search, notes, public web search, and URL tools. File tools read only within `OJOS_CHAT_ROOTS`, with paths separated by the OS path separator. File excerpts, indexed passages, and tool results used in an answer may be sent to Gemini. Web lookups pass the public query or URL to a separate Gemini request.
 

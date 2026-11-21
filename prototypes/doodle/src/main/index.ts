@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { readFile, rm } from 'node:fs/promises'
 import { analyzeBundle } from '@assistant'
 import type { Gaze } from '../shared/commands'
-import type { Interval } from '../shared/capture'
+import type { Interval, VisionExport } from '../shared/capture'
 import { calibrationDisplay, configuredDisplay, openSetup, registerSetupIpc, selectedDisplay, setupContents, setupDone, storeGet, storeSet } from './setup'
 import { RecordingService } from './capture/service'
 import { assistant, chatHistory, stopAssistant, streamChatTurn } from './assistant'
@@ -50,6 +50,7 @@ function createOverlay(): void {
 
 let pending: {
   gaze?: Gaze; still: string; questions: string[]; summary?: string
+  evidence: VisionExport['gaze']; stillTimeUs: number
 } | null = null
 
 function setPickKeys(on: boolean): void {
@@ -78,7 +79,7 @@ async function nudge(interval?: Interval): Promise<void> {
   try {
     const clip = await capture.clip(interval, signal)
     if (myRun === runId) {
-      pending = { gaze: clip.gaze, still: clip.still, questions: [] }
+      pending = { gaze: clip.gaze, still: clip.still, questions: [], evidence: clip.evidence, stillTimeUs: clip.stillTimeUs }
       win.webContents.send('nudge', clip.gaze ?? center)
       setPickKeys(true)
     }
@@ -121,8 +122,11 @@ async function ask(question: string | undefined, picked = false): Promise<void> 
   win.webContents.send('reset', { gaze: evidence?.gaze, question: message, fresh })
 
   try {
+    const screenContext = evidence ? JSON.stringify({
+      clip_summary: evidence.summary, still_time_us: evidence.stillTimeUs, gaze: evidence.evidence
+    }) : undefined
     const answer = await streamChatTurn({
-      chatId: id, turnId: randomUUID(), message, screenContext: evidence?.summary, jpeg: evidence?.still,
+      chatId: id, turnId: randomUUID(), message, screenContext, jpeg: evidence?.still,
       doodles: DOODLES && Boolean(evidence?.still),
       signal: AbortSignal.any([controller.signal, AbortSignal.timeout(125_000)])
     }, (event) => {
