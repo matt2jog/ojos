@@ -30,6 +30,11 @@ class ChatStore:
                     chat_id UNINDEXED, source UNINDEXED, location UNINDEXED, digest UNINDEXED, text
                 );
             """)
+            db.execute("BEGIN IMMEDIATE")
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(chat)")}
+            for name in ("title", "description"):
+                if name not in columns:
+                    db.execute(f"ALTER TABLE chat ADD COLUMN {name} TEXT NOT NULL DEFAULT ''")
 
     @contextmanager
     def connect(self):
@@ -46,9 +51,13 @@ class ChatStore:
             row = db.execute("SELECT context, summary, through_seq FROM chat WHERE id=?", (chat_id,)).fetchone()
             return tuple(row) if row else ("", "", 0)
 
-    def recent(self, chat_id, through=0, limit=None):
-        sql = "SELECT seq,id,question,answer FROM turn WHERE chat_id=? AND seq>? ORDER BY seq DESC"
+    def recent(self, chat_id, through=0, limit=None, *, before=None):
+        sql = "SELECT seq,id,question,answer FROM turn WHERE chat_id=? AND seq>?"
         args = (chat_id, through)
+        if before is not None:
+            sql += " AND seq<?"
+            args += (before,)
+        sql += " ORDER BY seq DESC"
         if limit is not None:
             sql += " LIMIT ?"
             args += (limit,)
@@ -60,14 +69,36 @@ class ChatStore:
             row = db.execute("SELECT question,answer FROM turn WHERE chat_id=? AND id=?", (chat_id, turn_id)).fetchone()
             return dict(row) if row else None
 
+    def chats(self, chat_id=None):
+        sql = """
+            SELECT chat.id, chat.title, chat.description, first.question, first.answer
+            FROM chat JOIN (
+                SELECT chat_id, min(seq) AS first_seq, max(seq) AS last_seq FROM turn GROUP BY chat_id
+            ) AS activity ON activity.chat_id = chat.id
+            JOIN turn AS first ON first.seq = activity.first_seq
+        """
+        args = ()
+        if chat_id is not None:
+            sql += " WHERE chat.id=?"
+            args = (chat_id,)
+        sql += " ORDER BY activity.last_seq DESC"
+        with self.connect() as db:
+            return [
+                {"id": row["id"], "title": row["title"] or _short_line(row["question"], 52),
+                 "description": row["description"] or _short_line(row["answer"], 120)}
+                for row in db.execute(sql, args)
+            ]
+
     def compact(self, chat_id, summary, through):
         with self.connect() as db:
             db.execute("UPDATE chat SET summary=?, through_seq=? WHERE id=? AND through_seq<?",
                        (summary, through, chat_id, through))
 
-    def save_turn(self, chat_id, turn_id, question, answer, context):
+    def save_turn(self, chat_id, turn_id, question, answer, context, metadata=None):
+        title, description = metadata or ("", "")
         with self.connect() as db:
-            db.execute("INSERT OR IGNORE INTO chat(id,context) VALUES(?,?)", (chat_id, context))
+            db.execute("INSERT OR IGNORE INTO chat(id,context,title,description) VALUES(?,?,?,?)",
+                       (chat_id, context, title, description))
             db.execute("INSERT INTO turn(chat_id,id,question,answer) VALUES(?,?,?,?)",
                        (chat_id, turn_id, question, answer))
 
@@ -99,7 +130,6 @@ class ChatStore:
                 rows = db.execute("SELECT source,location,text FROM passage WHERE chat_id=? AND passage MATCH ? "
                                   "ORDER BY rank LIMIT ?", (chat_id, match, limit))
             return [dict(row) for row in rows]
-
     def remember(self, chat_id, turn_id, note):
         with self.connect() as db:
             db.execute("INSERT OR IGNORE INTO note VALUES(?,?,?)", (chat_id, turn_id, note))
@@ -109,3 +139,8 @@ class ChatStore:
             rows = db.execute("SELECT turn_id,text FROM note WHERE chat_id=? AND instr(lower(text),lower(?))>0 "
                               "ORDER BY rowid DESC LIMIT 6", (chat_id, query))
             return [dict(row) for row in rows]
+
+
+def _short_line(value, limit):
+    value = " ".join(value.split())
+    return value if len(value) <= limit else value[:limit - 1].rstrip() + "…"

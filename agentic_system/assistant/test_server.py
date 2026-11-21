@@ -110,6 +110,29 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.events(self.submit(new_epoch, epoch=1))[-1], "job.result")
         self.assertIn("stale capture_epoch", self.submit(str(uuid4()), epoch=0, expected=400))
 
+    def test_saved_chat_list_and_history_pages(self):
+        from types import SimpleNamespace
+        from .chat_store import ChatStore
+
+        with tempfile.TemporaryDirectory(prefix="ojos-chat-history-") as directory:
+            store = ChatStore(Path(directory) / "chat.sqlite3")
+            previous, current = str(uuid4()), str(uuid4())
+            store.save_turn(previous, "old", "Previous question", "Previous answer", "")
+            for n in range(34):
+                store.save_turn(current, str(n), f"Question {n}", f"Answer {n}", "", ("Current chat", "Current topic."))
+            self.server.state.chat = SimpleNamespace(store=store)
+            status, body = self.request("GET", "/v1/chats")
+            self.assertEqual(status, 200)
+            self.assertEqual([chat["id"] for chat in json.loads(body)["chats"]], [current, previous])
+            self.assertEqual(self.request("GET", "/v1/chats", headers={"Authorization": "Bearer invalid"})[0], 401)
+            route = f"/v1/chats/{current}/history"
+            page = json.loads(self.request("GET", route)[1])
+            self.assertEqual([turn["id"] for turn in page["turns"]], list(map(str, range(4, 34))))
+            older = json.loads(self.request("GET", f"{route}?before_seq={page['older_before_seq']}")[1])
+            self.assertEqual([turn["id"] for turn in older["turns"]], ["0", "1", "2", "3"])
+            self.assertIsNone(older["older_before_seq"])
+            self.assertEqual(self.request("GET", f"{route}?before_seq=9223372036854775808")[0], 400)
+
     def test_late_completion_cannot_publish_over_newer_job(self):
         older, newer = (str(uuid4()) for _ in range(2))
         self.analyzer.block_event_id = older

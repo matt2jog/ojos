@@ -21,7 +21,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Mapping
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 from uuid import UUID, uuid4
 
 from .baseline import BaselineAnalyzer
@@ -372,16 +372,32 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(HTTPStatus.ACCEPTED, {"job_id": job.job_id})
 
     def do_GET(self) -> None:
-        route = urlsplit(self.path).path
+        target = urlsplit(self.path)
+        route = target.path
+        service = self.state.chat
+        if route == "/v1/chats" and service is not None:
+            if self._authorized():
+                self._send(HTTPStatus.OK, {"chats": service.store.chats()})
+            return
         chat = re.fullmatch(r"/v1/chats/([0-9a-f-]+)/history", route)
-        if chat and self.state.chat is not None:
+        if chat and service is not None:
             if self._authorized():
                 try:
                     chat_id = _uuid(chat[1], "chat_id")
+                    cursor = parse_qs(target.query, keep_blank_values=True, max_num_fields=8).get("before_seq")
+                    before = int(cursor[0]) if cursor else None
+                    if before is not None and (len(cursor) != 1 or not 0 < before < 2**63):
+                        raise ValueError("Invalid history cursor.")
                 except ValueError:
-                    self._send(HTTPStatus.BAD_REQUEST, {"error": "invalid_chat"})
+                    self._send(HTTPStatus.BAD_REQUEST, {"error": "invalid_chat_history"})
                     return
-                self._send(HTTPStatus.OK, {"turns": self.state.chat.store.recent(chat_id, limit=30)})
+                turns = service.store.recent(chat_id, limit=31, before=before)
+                matches = service.store.chats(chat_id)
+                self._send(HTTPStatus.OK, {
+                    "chat": matches[0] if matches else None,
+                    "turns": turns[-30:],
+                    "older_before_seq": turns[1]["seq"] if len(turns) > 30 else None,
+                })
             return
         match = re.fullmatch(r"/v1/jobs/([0-9a-f-]+)/events", route)
         if not match:
@@ -454,7 +470,7 @@ class _Handler(BaseHTTPRequestHandler):
                 emit("turn.status", {"text": "Thinking…"})
                 answer = asyncio.run(service.run(chat_id, turn_id, question.strip(), screen, jpeg, emit,
                                                  doodles=payload.get("doodles") is True))
-                emit("turn.done", {"text": answer})
+                emit("turn.done", {"text": answer, "chat": service.store.chats(chat_id)[0]})
             except (TimeoutError, ChatLimit) as error:
                 emit("turn.error", {"message": str(error) or "This turn timed out."})
             except (BrokenPipeError, ConnectionResetError):

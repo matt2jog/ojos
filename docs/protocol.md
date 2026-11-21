@@ -150,8 +150,9 @@ Result `status` is `answered` or `insufficient_evidence`. For insufficient evide
 Electron generates a chat UUID on selection of a fresh suggestion. Its local service accepts one active turn per chat. Requests use the same local bearer authentication as clip jobs.
 
 - `POST /v1/chats/{chat_id}/messages` takes `{"turn_id":"a-client-generated-uuid","message":"How can I confirm the folder?"}`. The initial turn may add `screen_context` (JSON encoded as a string), `jpeg_base64`, and `doodles`. Screen context contains `clip_summary`, `still_time_us`, and gaze rows in clip-relative time and encoded viewport pixels.
-- The response is SSE with `turn.status`, `turn.delta`, optional `turn.doodle`, and `turn.usage`. `turn.done` carries the saved answer in `text`. `turn.error` carries a displayable `message`. Retrying a completed turn ID returns the saved answer in the same chat.
-- `GET /v1/chats/{chat_id}/history` returns up to 30 completed turns under `turns` in chronological order.
+- The response is SSE with `turn.status`, `turn.delta`, optional `turn.doodle`, and `turn.usage`. `turn.done` carries the saved answer in `text` and chat metadata in `chat`. `turn.error` carries a displayable `message`. Retrying a completed turn ID returns the saved answer in the same chat.
+- `GET /v1/chats` lists saved chats in most recent activity order. Each entry contains `id`, `title`, and `description`.
+- `GET /v1/chats/{chat_id}/history` returns `chat` and up to 30 completed turns in chronological order. When `older_before_seq` is present, pass it as `before_seq` to load the previous page.
 
 ## Replay fixture specification
 
