@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { EnsembleCalibration, type CalibrationGeometry, type FitResult, type Tracker } from '@vision/calibration.mjs'
-import { nowUs, pickGazeSource, type GazeSource } from './gazeSource'
+import { nowUs, observeGaze } from './gazeSource'
 
 const FIT_COUNT = 9
 const TOTAL = 14
@@ -11,7 +11,6 @@ export type CalibrationOutcome = { kind: 'done'; results: Record<Tracker, FitRes
 
 interface Props {
   geometry: CalibrationGeometry
-  autopilot?: boolean
   onDone(outcome: CalibrationOutcome): void
 }
 
@@ -21,30 +20,23 @@ const sleepUntil = async (us: number): Promise<void> => {
 }
 
 /** Full-screen 9 + 5 target calibration. Rendering is ours; the math is EnsembleCalibration. */
-export function Calibration({ geometry, autopilot, onDone }: Props): React.JSX.Element {
+export function Calibration({ geometry, onDone }: Props): React.JSX.Element {
   const [phase, setPhase] = useState<'intro' | 'running' | 'fitting'>('intro')
   const [target, setTarget] = useState<{ point: [number, number]; index: number; ms: number } | null>(null)
   const [popped, setPopped] = useState(false)
-  const targetRef = useRef<[number, number] | null>(null)
   const cancelled = useRef(false)
-  const sourceRef = useRef<GazeSource | null>(null)
-  if (!sourceRef.current) sourceRef.current = pickGazeSource({ autopilot: autopilot ? () => targetRef.current : undefined })
-  const source = sourceRef.current
+  const started = useRef(false)
 
   const run = async (): Promise<void> => {
+    if (started.current) return
+    started.current = true
     setPhase('running')
     const cal = new EnsembleCalibration(geometry)
-    source.start((tracker, timeUs, raw) => {
-      try {
-        cal.observe(tracker, timeUs, raw)
-      } catch (e) {
-        console.warn('observe failed', e)
-      }
-    })
+    let unsubscribe: (() => void) | undefined
     try {
+      unsubscribe = await observeGaze(({ tracker, timeUs, raw }) => cal.observe(tracker, timeUs, raw))
       for (let i = 0; cal.nextTarget && !cancelled.current; i++) {
         const point = cal.nextTarget.point
-        targetRef.current = null
         setPopped(false)
         setTarget({ point, index: i, ms: 0 })
         await nextFrame()
@@ -52,7 +44,6 @@ export function Calibration({ geometry, autopilot, onDone }: Props): React.JSX.E
         if (cancelled.current) return
         const shown = nowUs()
         const win = cal.showTarget(shown)
-        targetRef.current = point
         setTarget({ point, index: i, ms: (win.collectUntilUs - shown) / 1000 })
         await sleepUntil(win.collectUntilUs + LATE_GRACE_US)
         if (cancelled.current) return
@@ -64,8 +55,12 @@ export function Calibration({ geometry, autopilot, onDone }: Props): React.JSX.E
       setPhase('fitting')
       const results = cal.fit()
       onDone({ kind: 'done', results })
+    } catch (error) {
+      console.warn('Calibration is unavailable:', error)
+      if (!cancelled.current) onDone({ kind: 'skipped' })
     } finally {
-      source.stop()
+      unsubscribe?.()
+      window.setup.stopCalibration()
     }
   }
 
@@ -84,10 +79,9 @@ export function Calibration({ geometry, autopilot, onDone }: Props): React.JSX.E
   }, [phase])
 
   useEffect(() => {
-    if (autopilot && phase === 'intro') setTimeout(() => void run(), 600)
+    cancelled.current = false
     return () => {
       cancelled.current = true
-      source.stop()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -98,8 +92,7 @@ export function Calibration({ geometry, autopilot, onDone }: Props): React.JSX.E
         <div className="cal-intro-card">
           <h1>Follow the dots with your eyes</h1>
           <p>Keep your head still and comfortable. 14 dots, about 15 seconds.</p>
-          <p className="cal-why">This teaches Ojos where on the screen you're looking. It stays on this laptop.</p>
-          {source.kind === 'simulated' && <p className="cal-sim">{source.label}</p>}
+          <p className="cal-why">This teaches Ojos where on the screen you’re looking. It stays on this laptop.</p>
           <div className="cal-keys">
             <span>
               <kbd>Space</kbd> start
@@ -139,7 +132,6 @@ export function Calibration({ geometry, autopilot, onDone }: Props): React.JSX.E
           : checking
             ? `Checking ${target!.index - FIT_COUNT + 1} of ${TOTAL - FIT_COUNT}`
             : `Calibrating ${(target?.index ?? 0) + 1} of ${FIT_COUNT}`}
-        {source.kind === 'simulated' && <span className="cal-sim-tag">simulated</span>}
       </div>
     </div>
   )

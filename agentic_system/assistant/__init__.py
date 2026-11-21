@@ -1,1 +1,1 @@
-"""Ojos question-generation prototype."""
+"""Ojos desktop clip analysis."""

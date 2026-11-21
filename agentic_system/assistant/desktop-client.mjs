@@ -42,7 +42,7 @@ export async function analyzeBundle({manifest, gaze, video, token, baseUrl = 'ht
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+async function runCli() {
   const [folder, baseUrl] = process.argv.slice(2);
   try {
     if (!folder) throw new Error('Usage: node agentic_system/assistant/desktop-client.mjs <bundle-folder> [base-url]');
@@ -56,4 +56,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     console.error(`Ojos desktop client: ${error.message}`);
     process.exitCode = 1;
   }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  void runCli();
 }

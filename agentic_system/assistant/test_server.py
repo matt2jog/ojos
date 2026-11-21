@@ -10,28 +10,40 @@ import threading
 import unittest
 from uuid import uuid4
 
-from .baseline import BaselineAnalyzer, DemoBaselineProvider
-from .core import Analysis, Memory, result_record
+from .baseline import Analysis, BaselineAnalyzer
+from .gemini import Generation
 from .server import build_server
 
 
-class FakeTutor:
+class FixtureAnalyzer:
     def __init__(self):
         self.started = threading.Event()
         self.release = threading.Event()
         self.block_event_id = None
-        self.memories = {}
 
-    def analyze(self, clip, *, memory, reply, variant):
-        self.memories[clip.event_id] = memory
+    def analyze(self, clip):
         if clip.event_id == self.block_event_id:
             self.started.set()
             if not self.release.wait(8):
                 raise TimeoutError("test timed out")
-        task = f"Test event {clip.event_id}"
-        question = "Which index does this code access?"
-        return Analysis(result_record(question, task=task, evidence=[{"time_us": 0, "detail": "A Python list is visible."}]),
-                        Memory(task, "list indexing", question), {})
+        return Analysis({"schema_version": 1, **_analysis_at(0)}, {})
+
+
+def _analysis_at(time_us):
+    return {
+        "status": "analyzed",
+        "suspected_confusion": "The learner may be unsure about list indexing.",
+        "possible_questions": ["Which index does this code access?"],
+        "summary": "Count the list entries from index zero.",
+        "evidence": [{"time_us": time_us, "detail": "A Python list is visible."}],
+    }
+
+
+class FixtureProvider:
+    name = "test-provider"
+
+    def generate(self, *, system_instruction, context, video, frames, response_schema):
+        return Generation(_analysis_at(frames[0][0]))
 
 
 class ServerTests(unittest.TestCase):
@@ -48,14 +60,14 @@ class ServerTests(unittest.TestCase):
         cls.video = (fixture / "video.mp4").read_bytes()
 
     def setUp(self):
-        self.tutor = FakeTutor()
-        self.server = build_server(self.tutor, token="local-test", port=0)
+        self.analyzer = FixtureAnalyzer()
+        self.server = build_server(self.analyzer, token="local-test", port=0)
         thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True)
         thread.start()
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.state.stop)
         self.addCleanup(self.server.shutdown)
-        self.addCleanup(self.tutor.release.set)
+        self.addCleanup(self.analyzer.release.set)
         self.session_id = str(uuid4())
 
     def request(self, method, path, body=None, headers=None):
@@ -88,41 +100,36 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(status, 200, text)
         return [line.removeprefix("event: ") for line in text.splitlines() if line.startswith("event: ")]
 
-    def test_retry_sse_resume_and_memory_across_pings(self):
-        first, followup, new_epoch = (str(uuid4()) for _ in range(3))
+    def test_retry_sse_resume_and_reject_stale_epochs(self):
+        first, new_epoch = (str(uuid4()) for _ in range(2))
         first_job = self.submit(first)
         self.assertEqual(self.submit(first), first_job)
-        self.assertEqual(self.events(first_job), ["job.status", "job.status", "job.result"])
-        self.assertEqual(self.events(first_job, last_id=2), ["job.result"])
-        self.assertEqual(self.events(self.submit(followup, offset=1_000_000))[-1], "job.result")
-        self.assertEqual(self.tutor.memories[followup].task, f"Test event {first}")
+        self.assertEqual(self.events(first_job), ["job.status", "job.status", "job.analysis", "job.result"])
+        self.assertEqual(self.events(first_job, last_id=2), ["job.analysis", "job.result"])
         self.assertEqual(self.events(self.submit(new_epoch, epoch=1))[-1], "job.result")
-        self.assertIsNone(self.tutor.memories[new_epoch])
+        self.assertIn("stale capture_epoch", self.submit(str(uuid4()), epoch=0, expected=400))
 
-    def test_late_completion_cannot_overwrite_newer_memory(self):
-        older, newer, followup = (str(uuid4()) for _ in range(3))
-        self.tutor.block_event_id = older
+    def test_late_completion_cannot_publish_over_newer_job(self):
+        older, newer = (str(uuid4()) for _ in range(2))
+        self.analyzer.block_event_id = older
         old_job = self.submit(older)
-        self.assertTrue(self.tutor.started.wait(3))
+        self.assertTrue(self.analyzer.started.wait(3))
         self.assertEqual(self.events(self.submit(newer, offset=1_000_000))[-1], "job.result")
-        self.tutor.release.set()
-        self.assertEqual(self.events(old_job)[-1], "job.canceled")
-        self.assertEqual(self.events(self.submit(followup, offset=2_000_000))[-1], "job.result")
-        self.assertEqual(self.tutor.memories[followup].task, f"Test event {newer}")
+        self.analyzer.release.set()
+        self.assertEqual(self.events(old_job), ["job.status", "job.status", "job.canceled"])
 
-    def test_cancel_prevents_result_and_memory_update(self):
+    def test_cancel_prevents_result(self):
         canceled, followup = (str(uuid4()) for _ in range(2))
-        self.tutor.block_event_id = canceled
+        self.analyzer.block_event_id = canceled
         job = self.submit(canceled)
-        self.assertTrue(self.tutor.started.wait(3))
+        self.assertTrue(self.analyzer.started.wait(3))
         self.assertEqual(self.request("DELETE", f"/v1/jobs/{job}")[0], 200)
-        self.tutor.release.set()
-        self.assertEqual(self.events(job)[-1], "job.canceled")
+        self.analyzer.release.set()
+        self.assertEqual(self.events(job), ["job.status", "job.status", "job.canceled"])
         self.assertEqual(self.events(self.submit(followup, offset=1_000_000))[-1], "job.result")
-        self.assertIsNone(self.tutor.memories[followup])
 
     def test_baseline_publishes_three_fields_before_compatible_result(self):
-        self.server.state.tutor = BaselineAnalyzer(DemoBaselineProvider())
+        self.server.state.analyzer = BaselineAnalyzer(FixtureProvider())
         job = self.submit(str(uuid4()))
         status, text = self.request("GET", f"/v1/jobs/{job}/events", headers={"Last-Event-ID": "2"})
         self.assertEqual(status, 200)
@@ -135,7 +142,7 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(analysis["summary"], compat["answer"])
 
     def test_desktop_gaze_v2_available_and_score_only(self):
-        self.server.state.tutor = BaselineAnalyzer(DemoBaselineProvider())
+        self.server.state.analyzer = BaselineAnalyzer(FixtureProvider())
         width = self.manifest["viewport_width_px"]
         height = self.manifest["viewport_height_px"]
         duration = self.manifest["clip_end_us"] - self.manifest["clip_start_us"]

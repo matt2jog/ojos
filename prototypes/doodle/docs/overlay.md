@@ -1,6 +1,6 @@
 # Ojos overlay (desktop UI)
 
-This covers the desktop overlay: what appears on screen when the user might be stuck, how they ask for help without typing, and how the answer is shown. Alejandro owns it. Victor owns the screen recorder module and the Gemini backend in [`agentic_system/`](../../../agentic_system/README.md), and Matt owns the confusion and gaze models in [`models/`](../../../models/README.md). Wiring them into the app is part of the overlay work. This prototype stubs them for now so the UI can be built and demoed. [Shared protocol](../../../docs/protocol.md) · [Ownership](../../../docs/ownership.md) · [Prototype](../)
+This covers the desktop overlay, how users ask for help, and how answers appear. Alejandro owns the overlay. Victor owns the recorder and Gemini backend, and Matt owns the confusion and gaze models. [Shared protocol](../../../docs/protocol.md) · [Ownership](../../../docs/ownership.md) · [Desktop](../)
 
 ## Core rule
 
@@ -9,11 +9,11 @@ The user never has to type the question. Their face says *that* they might be st
 ## User flow (MVP)
 
 1. **Confusion event:** the mascot slides in at the right edge of the screen. It's a dark pill with two eyes and a Google-colored "j" nose, so the face reads "o j o". The pupils follow the pointer (gaze later), and it blinks. The rest of the screen stays untouched.
-2. **Suggested questions:** a fast model reads the screenshot and gaze and guesses 2–3 questions specific to what's on screen. They pop out above the mascot as Notion-style dark pills with shortcuts (⌥1/⌥2/⌥3, Alt on Windows), plus "Something else? Just explain". While loading, a shimmer pill shows and the nose's spark spins.
+2. **Suggested questions.** The assistant reads the clip and calibrated gaze when available. Suggested questions pop out above the mascot with shortcuts (⌥1/⌥2/⌥3, Alt on Windows), plus "Something else? Just explain". While loading, a shimmer pill shows and the nose's spark spins.
 3. **Pick one:** click a pill, press its shortcut, or click the mascot for a generic explanation. The eyes squint happily, a rainbow glow appears around the screen and the side panel slides in.
 4. **Answer:** the explainer streams a short text answer into the panel, with the chosen question as the heading.
 5. **Close:** "Got it" or Cmd/Ctrl+Shift+X.
-6. **Ignored:** the mascot slides away after 15 s (hovering pauses this) and nothing is sent.
+6. **Ignored.** The mascot slides away after 15 seconds and the desktop cancels any pending clip analysis. Hovering pauses the timer.
 
 A new confusion event shows the mascot again without closing an answer the user is reading. Picking a new question replaces the open answer. Follow-ups that build on a previous question are out of scope for the MVP.
 
@@ -34,38 +34,29 @@ Shown on first launch, from the tray ("Run setup again…", "Recalibrate eyes…
 
 Storage is a JSON file in the app's user-data folder (`ojos-store.json`). It holds settings, the chosen display and calibration profiles, and never leaves the laptop.
 
-**Gaze source.** `src/renderer/src/setup/gazeSource.ts` decides where calibration observations come from. On Matt's laptop it should be `VisionSession`'s `onObservation` (WebEyeTrack in a renderer worker, ETH-XGaze through `native_worker.py`). Everywhere else a simulated source turns the mouse into raw rows of the same shape, so the real fit, validation and saving all run. The screen shows a "simulated" tag in that case. Wiring the live source is the next integration step.
+**Gaze source.** `src/renderer/src/setup/gazeSource.ts` receives raw WebEyeTrack and ETH-XGaze observations from the local capture process. It maps their timestamps onto the clock used to display calibration targets.
 
-**Geometry.** The camera ID and size come from the opened 720p track. The display ID, scale and rotation come from Electron. The encoded viewport is physical pixels scaled down to at most 1920 wide, so the recorder must encode at the same size.
+**Geometry.** The camera ID and size come from the opened track. The encoded viewport fits the selected display into at most 1920 × 1080 pixels with even dimensions and a preserved aspect ratio. Recording and calibration both use those dimensions.
 
 
 
 [prototypes/doodle/](../) uses Electron + electron-vite + React + TypeScript and targets macOS and Windows.
 
-```bash
-cd prototypes/doodle
-npm install
-npm run mock            # canned questions and answer, no key
-npm run mock:doodles    # same, with doodles
-npm run dev             # real Gemini; needs GEMINI_API_KEY in prototypes/doodle/.env
-npm run dev:doodles
-```
+See the [desktop instructions](../README.md) for dependencies, local startup, and packaging.
 
 | Key (Ctrl on Windows) | Action |
 | --- | --- |
-| Cmd+Shift+O | Fake confusion event. Point the mouse at the confusing thing first |
+| Cmd+Shift+O | Ask about the last 20 seconds |
 | Option/Alt+1, 2, 3 | Pick a suggested question (only while the mascot is showing) |
 | Cmd+Shift+X | Dismiss |
 | Cmd+Shift+Q | Quit |
-
-Stubs to replace: the hotkey stands in for confusion events, the mouse pointer for gaze, and a single `desktopCapturer` screenshot for the recorder. Gemini is called from the main process with the key in `.env`. That call moves to the backend before anything is packaged for others, so the key is never shipped.
 
 | Path | Role |
 | --- | --- |
 | `src/shared/commands.ts` | Contract types (source of truth for the tables below) |
 | `src/main/index.ts` | Overlay window, hotkeys, nudge → suggest → explain flow, run cancellation |
-| `src/main/gemini.ts` | Both prompts and the stream parser, to be moved to the backend |
-| `src/main/mock.ts` | Canned questions and answer |
+| `src/main/gemini.ts` | Selected-question prompt and stream parser |
+| `src/main/capture/service.ts` | Capture lifecycle, local vision workers, and clip export |
 | `src/renderer/src/components/Nudge.tsx` | Mascot and question pills |
 | `src/renderer/src/components/Panel.tsx` | Answer panel |
 | `src/renderer/src/components/Logo.tsx` | "ojos" wordmark |
@@ -73,7 +64,7 @@ Stubs to replace: the hotkey stands in for confusion events, the mouse pointer f
 
 ## Contract with the explainer
 
-Two calls per confusion event. Both get the screenshot of the display the overlay covers (uncropped) and the gaze point. Coordinates are integers on a 0–1000 scale across that display, origin top left. Gaze is noisy, so prompts treat it as "within about 150 units of this point" and rely on the screenshot to find the exact paragraph, line or element.
+The [clip assistant](../../../agentic_system/assistant/README.md) returns question suggestions. The selected-question explainer uses one frame from the same clip and an optional calibrated gaze point. Overlay coordinates are normalized to 0–1000 with a top-left origin.
 
 **1. Suggest** (fast model, default `gemini-4-hydrogen`). Starts as soon as the mascot appears. Returns JSON:
 
@@ -125,7 +116,7 @@ Each `draw` should come before the `say` that refers to it. Unknown or malformed
 - **Confusion events:** call the same path as the hotkey (`nudge()` in `src/main/index.ts`) when `interval.finalized` arrives. The model runs in Python, so the simplest bridge is a JSON line per event over stdout or a local socket. Agree on the format with the ML side.
 - **Gaze:** use the latest valid `gaze.sample` at event time, normalized to 0–1000. It's used to pick which paragraph or element the questions are about, and it drives the mascot's pupils. It never selects pills: the tracker is far too noisy for that, and choosing is the user's explicit opt-in.
 - **Screen capture:** replace `captureScreen()` with Victor’s `Recorder` from [`agentic_system/capture/recorder.cjs`](../../../agentic_system/CAPTURE.md), run in Electron main. A hidden renderer feeds it frames of the selected display. On a confusion event, call `interval(event, nowUs)` (or `manual(nowUs)` for "Help me now") and `writeBundle(clip, folder)` to get `video.mp4`, `manifest.json` and `gaze.json`. Export needs FFmpeg on `PATH`.
-- **Backend, suggest step:** send the bundle to Victor’s [screen analysis backend](../../../agentic_system/assistant/README.md) and map its result onto `Suggestions`. Keep the direct Gemini call in `src/main/gemini.ts` as the fallback when the backend is unreachable or returns `insufficient_evidence`.
+- **Backend, suggest step.** Send the bundle to the [clip assistant](../../../agentic_system/assistant/README.md) and map its result onto `Suggestions`.
 
   | Backend field | Overlay field |
   | --- | --- |
@@ -133,8 +124,8 @@ Each `draw` should come before the `say` that refers to it. Unknown or malformed
   | `possible_questions` | `questions` |
   | `summary` | `summary` |
 
-  Locally the backend runs on loopback with a bearer token (`OJOS_LOCAL_TOKEN=ojos-demo python3 -m agentic_system.assistant serve`). `POST /v1/jobs` takes `manifest`, `gaze` and `video`, and the three fields arrive in the `job.analysis` event on `GET /v1/jobs/{job_id}/events`. `POST /v1/analyze` takes a `video` and a Matt-style `tracking` sidecar and returns the fields directly. `--provider scripted` tests the wire format without a key.
-- **Backend, explain step:** the backend has no equivalent of the streamed `title`/`say` answer yet, so `streamGemini` stays in the app for now. The backend’s `summary` and evidence are available to seed or replace it once we decide how to show them.
+  The desktop starts the backend on loopback with a bearer token. `POST /v1/jobs` takes `manifest`, `gaze` and `video`. The three fields arrive in `job.analysis` on `GET /v1/jobs/{job_id}/events`.
+- **Backend, explain step.** After a user picks a question, `streamGemini` streams `title` and `say` commands from Electron main.
 
 ## Open items
 

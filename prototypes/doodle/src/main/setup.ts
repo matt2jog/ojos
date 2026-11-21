@@ -4,6 +4,7 @@ import { app, BrowserWindow, desktopCapturer, ipcMain, screen, shell, systemPref
 import { join } from 'path'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import type { DisplayInfo, PermissionKind, PermissionState } from '../shared/setup'
+import { encodedSize } from '../shared/capture'
 
 // ---------- local store (settings + calibration profiles; never leaves the laptop) ----------
 const storePath = (): string => join(app.getPath('userData'), 'ojos-store.json')
@@ -34,22 +35,22 @@ export function storeSet(key: string, value: string | null): void {
 export const setupDone = (): boolean => storeGet('setup.done') === '1'
 
 // ---------- displays ----------
-/** Encoded (recorded) viewport: physical pixels, scaled down proportionally to at most 1920 wide. */
-export function encodedViewport(d: Display): { width: number; height: number } {
-  const w = Math.round(d.size.width * d.scaleFactor)
-  const h = Math.round(d.size.height * d.scaleFactor)
-  const k = Math.min(1, 1920 / w)
-  const even = (v: number): number => Math.max(2, Math.round((v * k) / 2) * 2)
-  return { width: even(w), height: even(h) }
+export function configuredDisplay(): Display | undefined {
+  const id = storeGet('display.id')
+  return screen.getAllDisplays().find((d) => String(d.id) === id)
+}
+
+let setupDisplayId: string | null
+export function calibrationDisplay(): Display | undefined {
+  return screen.getAllDisplays().find((d) => String(d.id) === setupDisplayId)
 }
 
 export function selectedDisplay(): Display {
-  const id = storeGet('display.id')
-  return screen.getAllDisplays().find((d) => String(d.id) === id) ?? screen.getPrimaryDisplay()
+  return configuredDisplay() ?? screen.getPrimaryDisplay()
 }
 
-function displayInfo(d: Display): DisplayInfo {
-  const vp = encodedViewport(d)
+export function displayInfo(d: Display): DisplayInfo {
+  const vp = encodedSize(Math.round(d.size.width * d.scaleFactor), Math.round(d.size.height * d.scaleFactor))
   return {
     id: String(d.id),
     label: d.label || (d.internal ? 'Built-in display' : 'Display'),
@@ -87,7 +88,7 @@ const SETTINGS_URL: Record<'camera' | 'screen', string> = mac
 // ---------- window ----------
 let setupWin: BrowserWindow | null = null
 
-export function openSetup(opts: { onDone(): void; startAt?: string; query?: string }): BrowserWindow | null {
+export function openSetup(opts: { onDone(completed: boolean): void; startAt?: string }): BrowserWindow | null {
   if (setupWin && !setupWin.isDestroyed()) {
     setupWin.show()
     setupWin.focus()
@@ -105,20 +106,24 @@ export function openSetup(opts: { onDone(): void; startAt?: string; query?: stri
     autoHideMenuBar: true,
     webPreferences: { preload: join(__dirname, '../preload/index.js') }
   })
-  const q = opts.query ? `?${opts.query}` : ''
-  const page = `setup.html${q}#${opts.startAt ?? 'welcome'}`
+  completed = false
+  setupDisplayId = storeGet('display.id')
+  const page = `setup.html#${opts.startAt ?? 'welcome'}`
   if (process.env.ELECTRON_RENDERER_URL) setupWin.loadURL(`${process.env.ELECTRON_RENDERER_URL}/${page}`)
-  else setupWin.loadFile(join(__dirname, '../renderer/setup.html'), { hash: opts.startAt ?? 'welcome', search: opts.query })
+  else setupWin.loadFile(join(__dirname, '../renderer/setup.html'), { hash: opts.startAt ?? 'welcome' })
   setupWin.once('ready-to-show', () => {
     setupWin?.show()
     app.focus({ steal: true })
   })
   setupWin.on('closed', () => {
     setupWin = null
-    opts.onDone()
+    opts.onDone(completed)
   })
   return setupWin
 }
+
+let completed = false
+export const setupContents = () => setupWin?.webContents
 
 let restoreBounds: Electron.Rectangle | null = null
 
@@ -126,7 +131,8 @@ function setFullscreenOn(displayId: string | null): void {
   const w = setupWin
   if (!w) return
   if (displayId) {
-    const d = screen.getAllDisplays().find((x) => String(x.id) === displayId) ?? screen.getPrimaryDisplay()
+    const d = screen.getAllDisplays().find((x) => String(x.id) === displayId)
+    if (!d) throw new Error('The selected calibration display was disconnected.')
     restoreBounds = w.getBounds()
     w.setBounds(d.bounds)
     if (mac) w.setSimpleFullScreen(true)
@@ -177,12 +183,20 @@ export function registerSetupIpc(): void {
   })
   ipcMain.handle('setup:displays', () => ({
     displays: screen.getAllDisplays().map(displayInfo),
-    selected: String(selectedDisplay().id)
+    selected: String((calibrationDisplay() ?? selectedDisplay()).id)
   }))
-  ipcMain.handle('setup:select-display', (_e, id: string) => storeSet('display.id', id))
+  ipcMain.handle('setup:select-display', (event, id: string) => {
+    if (event.sender !== setupContents() || !screen.getAllDisplays().some((d) => String(d.id) === id)) {
+      throw new Error('Select an available display.')
+    }
+    setupDisplayId = id
+  })
   ipcMain.handle('setup:fullscreen', (_e, displayId: string | null) => setFullscreenOn(displayId))
-  ipcMain.handle('setup:finish', () => {
+  ipcMain.handle('setup:finish', (event) => {
+    if (event.sender !== setupContents() || !calibrationDisplay()) throw new Error('Select an available display first.')
+    storeSet('display.id', setupDisplayId)
     storeSet('setup.done', '1')
+    completed = true
     setupWin?.close()
   })
 }

@@ -1,23 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { saveTrackerProfile, type CalibrationGeometry, type FitResult, type Tracker } from '@vision/calibration.mjs'
+import { loadTrackerProfile, saveTrackerProfile, type CalibrationGeometry, type Tracker } from '@vision/calibration.mjs'
+import type { CalibrationStage } from '../../../shared/capture'
 import type { DisplayInfo, PermissionKind, PermissionState } from '../../../shared/setup'
 import { Logo } from '../components/Logo'
 import { Calibration, type CalibrationOutcome } from './Calibration'
 
-type Step = 'welcome' | 'permissions' | 'display' | 'calibrate' | 'result' | 'done'
+type Step = 'welcome' | 'permissions' | 'display' | 'prepare' | 'calibrate' | 'fallback' | 'done'
 const ORDER: Step[] = ['welcome', 'permissions', 'display', 'calibrate', 'done']
-const TRACKER_NAMES: Record<Tracker, string> = { model1: 'Eye model 1 · WebEyeTrack', model2: 'Eye model 2 · ETH-XGaze' }
-const AUTOPILOT = location.search.includes('autopilot')
-
-// Camera is opened once (720p, no audio) and reused for the preview and calibration geometry.
-let camera: MediaStream | null = null
-async function openCamera(): Promise<MediaStream> {
-  if (camera?.active) return camera
-  camera = await navigator.mediaDevices.getUserMedia({
-    video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
-    audio: false
-  })
-  return camera
+const TRACKERS: Tracker[] = ['model1', 'model2']
+const PREPARATION = {
+  camera: { milestone: 0, message: 'Connecting to your camera…' },
+  trackers: { milestone: 1, message: 'Loading the eye tracker…' },
+  secondary: { milestone: 2, message: 'Checking tracker readiness…' }
 }
 
 function Mascot(): React.JSX.Element {
@@ -50,7 +44,7 @@ function Mascot(): React.JSX.Element {
 }
 
 function Progress({ step }: { step: Step }): React.JSX.Element {
-  const at = ORDER.indexOf(step === 'result' ? 'calibrate' : step)
+  const at = ORDER.indexOf(step === 'prepare' || step === 'fallback' ? 'calibrate' : step)
   return (
     <div className="setup-progress">
       {ORDER.map((s, i) => (
@@ -69,11 +63,14 @@ export function SetupApp(): React.JSX.Element {
   const [displays, setDisplays] = useState<DisplayInfo[]>([])
   const [displayId, setDisplayId] = useState<string>('')
   const [geometry, setGeometry] = useState<CalibrationGeometry | null>(null)
-  const [results, setResults] = useState<Record<Tracker, FitResult> | null>(null)
-  const [skipped, setSkipped] = useState(false)
+  const [readyTrackers, setReadyTrackers] = useState<Tracker[]>([])
+  const [stage, setStage] = useState<CalibrationStage>('camera')
   const [camError, setCamError] = useState<string | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
+  const preparation = useRef(0)
+  const preparing = useRef(false)
   const mac = platform === 'darwin'
+  const selected = displays.find((display) => display.id === displayId)
 
   useEffect(() => {
     void window.setup.platform().then(setPlatform)
@@ -91,72 +88,100 @@ export function SetupApp(): React.JSX.Element {
   // Camera preview once allowed.
   useEffect(() => {
     if (step !== 'permissions' || perms?.camera !== 'granted') return
-    openCamera()
+    let disposed = false
+    let preview: MediaStream | undefined
+    navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+      audio: false
+    })
       .then((s) => {
+        if (disposed) {
+          s.getTracks().forEach((track) => track.stop())
+          return
+        }
+        preview = s
         setCamError(null)
         if (videoRef.current && videoRef.current.srcObject !== s) {
           videoRef.current.srcObject = s
           void videoRef.current.play()
         }
       })
-      .catch((e) => setCamError(String(e.message ?? e)))
+      .catch((e) => { if (!disposed) setCamError(String(e.message ?? e)) })
+    return () => {
+      disposed = true
+      preview?.getTracks().forEach((track) => track.stop())
+    }
   }, [step, perms?.camera])
 
   // ----- displays -----
   useEffect(() => {
     if (step !== 'display') return
+    let disposed = false
     void window.setup.displays().then(({ displays, selected }) => {
+      if (disposed) return
       setDisplays(displays)
-      setDisplayId(selected)
-      if (displays.length === 1) void startCalibration(displays[0])
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      setDisplayId((previous) => displays.some((display) => display.id === previous) ? previous : selected)
+    }).catch((error: unknown) => console.warn('Unable to list displays:', error))
+    return () => { disposed = true }
   }, [step])
 
   const startCalibration = useCallback(async (d: DisplayInfo) => {
-    await window.setup.selectDisplay(d.id)
-    let cameraId = 'simulated'
-    let cameraWidth = 1280
-    let cameraHeight = 720
+    if (preparing.current) return
+    preparing.current = true
+    const attempt = ++preparation.current
+    const current = (): boolean => preparation.current === attempt
+    setStage('camera')
+    setStep('prepare')
+    const unsubscribe = window.setup.onCalibrationProgress((stage) => { if (current()) setStage(stage) })
     try {
-      if (AUTOPILOT) throw new Error('autopilot: no camera')
-      const track = (await openCamera()).getVideoTracks()[0]
-      const s = track.getSettings()
-      cameraId = s.deviceId || 'default-camera'
-      cameraWidth = Math.round(s.width ?? 1280)
-      cameraHeight = Math.round(s.height ?? 720)
-    } catch {
-      /* no camera: simulated geometry keeps the flow usable */
+      await window.setup.selectDisplay(d.id)
+      if (!current()) return
+      const { trackers, ...camera } = await window.setup.prepareCalibration()
+      if (!current()) return
+      setGeometry({
+        ...camera, displayId: d.id, displayScale: d.scaleFactor, rotationDeg: d.rotationDeg,
+        viewportWidth: d.viewportWidth, viewportHeight: d.viewportHeight
+      })
+      setReadyTrackers(trackers)
+      await window.setup.fullscreen(d.id)
+      if (current()) setStep('calibrate')
+    } catch (error) {
+      if (!current()) return
+      console.warn('Unable to start live calibration:', error)
+      window.setup.stopCalibration()
+      setStep('fallback')
+    } finally {
+      unsubscribe()
+      if (current()) preparing.current = false
     }
-    setGeometry({
-      cameraId,
-      cameraWidth,
-      cameraHeight,
-      displayId: d.id,
-      displayScale: d.scaleFactor,
-      rotationDeg: d.rotationDeg,
-      viewportWidth: d.viewportWidth,
-      viewportHeight: d.viewportHeight
-    })
-    if (!AUTOPILOT) await window.setup.fullscreen(d.id)
-    setStep('calibrate')
   }, [])
 
+  const skipPreparation = (): void => {
+    ++preparation.current
+    preparing.current = false
+    window.setup.stopCalibration()
+    void window.setup.fullscreen(null)
+    setStep('done')
+  }
+
   const onCalibrated = async (outcome: CalibrationOutcome): Promise<void> => {
-    if (!AUTOPILOT) await window.setup.fullscreen(null)
-    if (outcome.kind === 'skipped') {
-      setSkipped(true)
-      setResults(null)
-    } else {
-      setSkipped(false)
-      setResults(outcome.results)
-      for (const tracker of Object.keys(outcome.results) as Tracker[]) {
-        const r = outcome.results[tracker]
-        if (r.calibration && geometry) saveTrackerProfile(window.setup.store, tracker, geometry, r.calibration)
-      }
-      if (geometry) window.setup.store.setItem('calibration.geometry', JSON.stringify(geometry))
+    window.setup.stopCalibration()
+    await window.setup.fullscreen(null)
+    if (outcome.kind === 'skipped' || !geometry) {
+      setStep('done')
+      return
     }
-    setStep('result')
+    const { results } = outcome
+    const diagnostics = Object.fromEntries(TRACKERS.map((tracker) => {
+      const result = results[tracker]
+      if (!readyTrackers.includes(tracker)) return [tracker, { status: 'unavailable' }]
+      if (result.calibration) saveTrackerProfile(window.setup.store, tracker, geometry, result.calibration)
+      return [tracker, { status: result.calibration ? 'passed' : result.reason, metrics: result.metrics }]
+    }))
+    window.setup.store.setItem('calibration.lastResult', JSON.stringify(diagnostics))
+    window.setup.store.setItem('calibration.geometry', JSON.stringify(geometry))
+    const hasProfile = TRACKERS.some((tracker) => loadTrackerProfile(window.setup.store, tracker, geometry))
+    setStep(hasProfile ? 'done' : 'fallback')
   }
 
   const permRow = (kind: PermissionKind, title: string, why: string): React.JSX.Element => {
@@ -248,93 +273,70 @@ export function SetupApp(): React.JSX.Element {
 
       {step === 'display' && (
         <main className="setup-body">
-          <h2>Which screen do you work on?</h2>
-          <p className="sub">Ojos records and calibrates on one display.</p>
+          <h2>{displays.length === 1 ? 'Calibrate on your display' : 'Which screen do you work on?'}</h2>
+          <p className="sub">{displays.length === 1
+            ? 'Ojos will use this display to calibrate eye tracking.'
+            : 'Choose the display you want Ojos to record and calibrate on.'}</p>
           <div className="displays">
-            {displays.map((d) => (
-              <button
-                key={d.id}
-                className={`display ${displayId === d.id ? 'sel' : ''}`}
-                onClick={() => setDisplayId(d.id)}
-              >
-                <div className="display-shape" style={{ aspectRatio: `${d.width} / ${d.height}` }} />
-                <div className="display-name">
-                  {d.label}
-                  {d.primary ? ' · main' : ''}
+            {displays.map((display) => {
+              const details = (
+                <>
+                  <span className="display-icon" aria-hidden="true" />
+                  <span>
+                    <span className="display-name">{display.label}</span>
+                    <span className="display-size">
+                      {Math.round(display.width * display.scaleFactor)} × {Math.round(display.height * display.scaleFactor)}
+                      {displays.length > 1 && display.primary ? ' · Main display' : ''}
+                    </span>
+                  </span>
+                </>
+              )
+              if (displays.length === 1) return (
+                <div key={display.id} className="display single">
+                  {details}
+                  <span className="display-selected">Selected</span>
                 </div>
-                <div className="display-size">
-                  {d.width} × {d.height}
-                </div>
-              </button>
-            ))}
+              )
+              return (
+                <button key={display.id} type="button" className={`display ${display.id === displayId ? 'sel' : ''}`}
+                  aria-pressed={display.id === displayId} onClick={() => setDisplayId(display.id)}>
+                  {details}
+                </button>
+              )
+            })}
           </div>
           <footer className="setup-foot">
             <span />
-            <button
-              className="btn"
-              disabled={!displayId}
-              onClick={() => {
-                const d = displays.find((x) => x.id === displayId)
-                if (d) void startCalibration(d)
-              }}
-            >
+            <button className="btn" disabled={!selected} onClick={() => { if (selected) void startCalibration(selected) }}>
               Calibrate on this screen
             </button>
           </footer>
         </main>
       )}
 
-      {step === 'calibrate' && geometry && <Calibration geometry={geometry} autopilot={AUTOPILOT} onDone={(o) => void onCalibrated(o)} />}
-
-      {step === 'result' && (
-        <main className="setup-body">
-          <h2>{skipped ? 'Calibration skipped' : 'Calibration results'}</h2>
-          {skipped ? (
-            <p className="sub">
-              Ojos will still notice when you look stuck. It just won&apos;t know exactly where you were looking, so
-              its questions may be less specific. You can recalibrate any time from the menu bar.
-            </p>
-          ) : (
-            <div className="results">
-              {results &&
-                (Object.keys(results) as Tracker[]).map((t) => {
-                  const r = results[t]
-                  const m = r.metrics
-                  return (
-                    <div key={t} className={`result ${r.calibration ? 'ok' : 'bad'}`}>
-                      <div className="result-mark">{r.calibration ? '✓' : '✕'}</div>
-                      <div>
-                        <div className="perm-title">{TRACKER_NAMES[t]}</div>
-                        <div className="perm-why">
-                          {r.calibration
-                            ? `Typical error ${Math.round(m.medianErrorPx ?? 0)} px (limit ${Math.round(m.thresholdPx ?? 0)} px)`
-                            : r.reason === 'missing_fit_target'
-                              ? 'Couldn’t see your eyes on some dots. Check lighting and that your face is in view.'
-                              : `Not accurate enough (${Math.round(m.medianErrorPx ?? 0)} px vs ${Math.round(m.thresholdPx ?? 0)} px limit).`}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              {results && !results.model1.calibration && !results.model2.calibration && (
-                <p className="hint">Ojos still works without eye tracking; questions will just be less specific.</p>
-              )}
-            </div>
-          )}
+      {step === 'prepare' && (
+        <main className="setup-body prepare-body">
+          <section className="cal-preparation" aria-labelledby="cal-preparation-title">
+            <h2 id="cal-preparation-title">Preparing calibration</h2>
+            <p className="sub" role="status">{PREPARATION[stage].message}</p>
+            <progress className="cal-preparation-progress" aria-label="Calibration preparation"
+              aria-valuetext={PREPARATION[stage].message} max={4} value={PREPARATION[stage].milestone + 1} />
+          </section>
           <footer className="setup-foot">
-            <button
-              className="link"
-              onClick={() => {
-                const d = displays.find((x) => x.id === displayId)
-                if (d) void startCalibration(d)
-                else setStep('display')
-              }}
-            >
-              {skipped ? 'Calibrate now' : 'Try again'}
-            </button>
-            <button className="btn" onClick={() => setStep('done')}>
-              Continue
-            </button>
+            <button className="link" onClick={skipPreparation}>Skip calibration</button>
+          </footer>
+        </main>
+      )}
+
+      {step === 'calibrate' && geometry && <Calibration geometry={geometry} onDone={(o) => void onCalibrated(o)} />}
+
+      {step === 'fallback' && (
+        <main className="setup-body">
+          <h2>Eye tracking isn’t ready yet</h2>
+          <p className="sub">Try again with your face in view and the camera available, or continue using screen context.</p>
+          <footer className="setup-foot">
+            <button className="link" onClick={() => setStep('display')}>Try again</button>
+            <button className="btn" onClick={() => setStep('done')}>Continue without eye tracking</button>
           </footer>
         </main>
       )}

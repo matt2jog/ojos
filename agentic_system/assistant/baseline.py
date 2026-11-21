@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from time import perf_counter
+from typing import Protocol
 
-from .core import Analysis, Provider, elapsed_ms, object_schema, question_text, required_text, result_record, screen_context
 from .gemini import Generation, ProviderError
 from .media import Clip, prepare_media
 
 
-DEFAULT_BASELINE_VARIANT = "video-gaze-still"
 DEFAULT_BASELINE_MODEL = "gemini-4-hydrogen"
 
 INSTRUCTION = """Analyze this desktop recording for Ojos. Consider the entire clip. Use the
@@ -40,20 +40,56 @@ and a short summary of what is missing. Return only the structured result.
 """
 
 
+@dataclass(frozen=True)
+class Analysis:
+    screen_analysis: dict
+    metrics: dict
+
+
+class Provider(Protocol):
+    name: str
+
+    def generate(
+        self, *, system_instruction: str, context: dict, video: bytes,
+        frames: tuple[tuple[int, bytes], ...], response_schema: dict,
+    ) -> Generation: ...
+
+
+def _object_schema(properties: dict) -> dict:
+    return {"type": "object", "properties": properties, "required": list(properties), "additionalProperties": False}
+
+
+def _required_text(value: object, label: str, limit: int) -> str:
+    if not isinstance(value, str) or not value.strip() or len(value) > limit:
+        raise ProviderError(f"Invalid model response field: {label}")
+    return value.strip()
+
+
+def _question_text(value: object) -> str:
+    question = _required_text(value, "question", 300)
+    if not question.endswith("?") or question.count("?") != 1:
+        raise ProviderError("Model response must contain one question ending in a question mark")
+    return question
+
+
+def _elapsed_ms(start: float) -> float:
+    return round((perf_counter() - start) * 1000, 2)
+
+
 def baseline_schema(duration_us: int) -> dict:
-    return object_schema({
+    return _object_schema({
         "status": {"type": "string", "enum": ["analyzed", "insufficient_evidence"]},
         "suspected_confusion": {"type": ["string", "null"]},
         "possible_questions": {"type": "array", "maxItems": 3, "items": {"type": "string"}},
         "summary": {"type": "string"},
-        "evidence": {"type": "array", "maxItems": 2, "items": object_schema({
+        "evidence": {"type": "array", "maxItems": 2, "items": _object_schema({
             "time_us": {"type": "integer", "minimum": 0, "maximum": duration_us - 1},
             "detail": {"type": "string"},
         })},
     })
 
 
-def validate_analysis(value: dict, clip: Clip, still_timestamps: set[int] | None) -> dict:
+def validate_analysis(value: dict, clip: Clip) -> dict:
     if not isinstance(value, dict) or value.keys() != baseline_schema(clip.duration_us)["properties"].keys():
         raise ProviderError("Screen analysis has missing or unexpected fields")
     status = value["status"]
@@ -62,12 +98,12 @@ def validate_analysis(value: dict, clip: Clip, still_timestamps: set[int] | None
                 "possible_questions": [], "summary": "I couldn't identify the task from this clip.", "evidence": []}
     if status != "analyzed":
         raise ProviderError("Screen analysis has an unknown status")
-    summary = required_text(value["summary"], "summary", 800)
-    confusion = required_text(value["suspected_confusion"], "suspected confusion", 400)
+    summary = _required_text(value["summary"], "summary", 800)
+    confusion = _required_text(value["suspected_confusion"], "suspected confusion", 400)
     questions, evidence = value["possible_questions"], value["evidence"]
     if not isinstance(questions, list) or not 1 <= len(questions) <= 3:
         raise ProviderError("Screen analysis needs one to three possible questions")
-    questions = [question_text(question) for question in questions]
+    questions = [_question_text(question) for question in questions]
     if not isinstance(evidence, list) or not 1 <= len(evidence) <= 2:
         raise ProviderError("Screen analysis needs one or two observations")
     for item in evidence:
@@ -76,48 +112,36 @@ def validate_analysis(value: dict, clip: Clip, still_timestamps: set[int] | None
         time_us = item["time_us"]
         if type(time_us) is not int or not 0 <= time_us < clip.duration_us:
             raise ProviderError("Evidence time is outside the clip")
-        if still_timestamps is not None and time_us not in still_timestamps:
-            raise ProviderError("Evidence time does not match an attached still")
-        required_text(item["detail"], "evidence detail", 400)
+        _required_text(item["detail"], "evidence detail", 400)
     return {"schema_version": 1, "status": status, "suspected_confusion": confusion,
             "possible_questions": questions, "summary": summary, "evidence": evidence}
 
 
 class BaselineAnalyzer:
-    def __init__(self, provider: Provider, *, variant: str = DEFAULT_BASELINE_VARIANT):
+    def __init__(self, provider: Provider):
         self.provider = provider
-        self.variant = variant
 
-    def analyze(self, clip: Clip, *, memory=None, reply=None, variant: str | None = None,
-                attach_still_at_us: int | None = None) -> Analysis:
-        variant = self.variant if variant is None else variant
+    def analyze(self, clip: Clip) -> Analysis:
         started = perf_counter()
-        video, frames, gaze = prepare_media(clip, variant, attach_still_at_us=attach_still_at_us)
-        context = screen_context(clip, gaze, frames)
+        video, frames, gaze = prepare_media(clip)
+        context = {
+            "source": clip.source,
+            "clip": {
+                "duration_us": clip.duration_us,
+                "event_start_us": clip.event_start_us,
+                "event_end_us": clip.event_end_us,
+                "viewport_width_px": clip.width_px,
+                "viewport_height_px": clip.height_px,
+            },
+            "gaze": list(gaze),
+            "selected_frames_us": [timestamp for timestamp, _ in frames],
+        }
         provider_started = perf_counter()
         generated = self.provider.generate(system_instruction=INSTRUCTION, context=context, video=video, frames=frames,
                                            response_schema=baseline_schema(clip.duration_us))
-        provider_ms = elapsed_ms(provider_started)
-        result = validate_analysis(generated.value, clip, set(context["selected_frames_us"]) if video is None else None)
-        questions = result["possible_questions"]
-        v1_result = result_record(result["summary"], task=questions[0] if questions else None, evidence=result["evidence"])
-        return Analysis(v1_result, None, {
-            "provider": self.provider.name, "variant": variant, "provider_ms": provider_ms,
-            "total_ms": elapsed_ms(started), "gaze_samples_sent": len(gaze), "usage": generated.usage,
-        }, screen_analysis=result)
-
-
-class DemoBaselineProvider:
-    """Fixed response for the synthetic Python example in the local API smoke test."""
-
-    name = "scripted-screen-analysis"
-
-    def generate(self, *, system_instruction, context, video, frames, response_schema):
-        timestamp = frames[0][0] if frames else context["clip"]["event_start_us"]
-        return Generation({
-            "status": "analyzed",
-            "suspected_confusion": "You might be counting Python list indices starting at one.",
-            "possible_questions": ["What indices can I use for a list of three items?", "Why does items[3] raise IndexError?"],
-            "summary": "Python starts list indices at zero. Write the indices under the three visible items and compare them with the index in the code.",
-            "evidence": [{"time_us": timestamp, "detail": "The demo shows a three-item list and a call to print(items[3])."}],
+        provider_ms = _elapsed_ms(provider_started)
+        result = validate_analysis(generated.value, clip)
+        return Analysis(result, {
+            "provider": self.provider.name, "variant": "video-gaze-still", "provider_ms": provider_ms,
+            "total_ms": _elapsed_ms(started), "gaze_samples_sent": len(gaze), "usage": generated.usage,
         })

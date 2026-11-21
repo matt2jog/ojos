@@ -8,7 +8,6 @@ what a participant understood.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import shutil
@@ -250,83 +249,6 @@ def load_bundle(folder: Path) -> Clip:
     return Clip(video, session_id, event_id, epoch, clip_start, local_start, local_end, duration_us, width, height, source, gaze)
 
 
-def _hash_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    try:
-        with path.open("rb") as source:
-            for block in iter(lambda: source.read(1024 * 1024), b""):
-                digest.update(block)
-    except OSError as error:
-        raise InputError(f"cannot hash {path.name}") from error
-    return digest.hexdigest()
-
-
-def load_tracking(
-    video: Path,
-    tracking: Path,
-    *,
-    event_start_us: int | None = None,
-    event_end_us: int | None = None,
-    session_id: str | None = None,
-) -> Clip:
-    """Load Matt's raw tracking sidecar and align its samples to clip zero."""
-
-    video = Path(video).expanduser().resolve()
-    tracking = Path(tracking).expanduser().resolve()
-    payload = _read_json(tracking)
-    if not isinstance(payload, dict) or type(payload.get("schema_version")) is not int or payload["schema_version"] != 1:
-        raise InputError("tracking sidecar must use schema_version 1")
-    video_meta = payload.get("video")
-    if not isinstance(video_meta, dict):
-        raise InputError("tracking sidecar must include video metadata")
-    info = _video_info(video)
-    declared_hash = video_meta.get("sha256")
-    video_hash = _hash_file(video)
-    if not isinstance(declared_hash, str) or video_hash != declared_hash.lower():
-        raise InputError("tracking sidecar video sha256 does not match the supplied video")
-    width = _positive_int(video_meta.get("width_px"), "tracking video width_px")
-    height = _positive_int(video_meta.get("height_px"), "tracking video height_px")
-    if (width, height) != (info["width"], info["height"]):
-        raise InputError("tracking sidecar geometry does not match the video")
-    declared_duration = _uint(video_meta.get("duration_us"), "tracking video duration_us")
-    if abs(declared_duration - info["duration_us"]) > 100_000:
-        raise InputError("tracking sidecar duration does not match the video")
-    duration_us = declared_duration
-    if (event_start_us is None) != (event_end_us is None):
-        raise InputError("event_start_us and event_end_us must be supplied together")
-    if event_start_us is None:
-        local_start, local_end = 0, duration_us
-    else:
-        local_start, local_end = _uint(event_start_us, "event_start_us"), _uint(event_end_us, "event_end_us")
-        if local_end <= local_start or local_start >= duration_us:
-            raise InputError("tracking event must overlap the video")
-        local_start, local_end = local_start, min(local_end, duration_us)
-    samples = payload.get("samples")
-    if not isinstance(samples, list):
-        raise InputError("tracking sidecar samples must be an array")
-    gaze: list[dict[str, Any]] = []
-    previous = -1
-    for index, row in enumerate(samples):
-        if not isinstance(row, dict) or not isinstance(row.get("time_us"), int):
-            raise InputError(f"tracking sample {index} has no integer time_us")
-        time_us = _uint(row["time_us"], f"tracking sample {index} time_us")
-        if time_us <= previous or time_us >= duration_us:
-            raise InputError(f"tracking sample {index} is out of order or outside the video")
-        previous = time_us
-        point = row.get("gaze")
-        if not isinstance(point, dict) or point.get("valid") is not True:
-            continue
-        x = _number(point.get("x_px"), f"tracking sample {index} x_px")
-        y = _number(point.get("y_px"), f"tracking sample {index} y_px")
-        if not (0 <= x < width and 0 <= y < height):
-            continue
-        gaze.append({"time_us": time_us, "x_px": x, "y_px": y, "uncertainty_radius_px": None, "valid": True})
-    sid = _uuid(session_id, "session_id") if session_id is not None else str(uuid.uuid5(uuid.NAMESPACE_URL, f"ojos:tracking:{video_hash}"))
-    event_seed = f"{sid}:{video_hash}:{local_start}:{local_end}"
-    eid = str(uuid.uuid5(uuid.NAMESPACE_URL, f"ojos:event:{event_seed}"))
-    return Clip(video, sid, eid, 0, 0, local_start, local_end, duration_us, width, height, "replay", tuple(gaze))
-
-
 def _frame_times(clip: Clip) -> list[tuple[int, int]]:
     try:
         raw = subprocess.check_output(
@@ -366,80 +288,53 @@ def _run_ffmpeg(args: list[str], failure: str) -> None:
         raise InputError(failure) from error
 
 
-def _extract_frames(clip: Clip, targets: tuple[int, ...], workspace: Path) -> tuple[tuple[int, bytes], ...]:
+def _extract_still(clip: Clip, target: int, workspace: Path) -> tuple[int, bytes]:
     timeline = _frame_times(clip)
-    # Select the frame actually on-screen at each target by frame index. Using a
-    # seek at the formatted timestamp can skip that frame on a VFR input.
-    chosen = sorted({
-        next((frame for frame in reversed(timeline) if frame[1] <= target), timeline[0])
-        for target in targets
-    })
-    selection = "+".join(f"eq(n\\,{index})" for index, _ in chosen)
+    # Selecting by decoded index keeps the frame visible at the target on VFR input.
+    index, timestamp = next((frame for frame in reversed(timeline) if frame[1] <= target), timeline[0])
+    file = workspace / "frame.jpg"
     _run_ffmpeg([
-        "-i", str(clip.video), "-map", "0:v:0", "-vf", f"select={selection}", "-fps_mode", "passthrough",
-        "-frames:v", str(len(chosen)), "-q:v", FRAME_QUALITY, str(workspace / "frame-%02d.jpg"),
-    ], "could not decode the requested stills")
-    frames = []
-    for number, (_, timestamp) in enumerate(chosen, start=1):
-        file = workspace / f"frame-{number:02d}.jpg"
-        if not file.is_file() or not 0 < file.stat().st_size <= MAX_FRAME_BYTES:
-            raise InputError("decoded frame is missing or oversized")
-        frames.append((timestamp, file.read_bytes()))
-    return tuple(frames)
+        "-i", str(clip.video), "-map", "0:v:0", "-vf", f"select=eq(n\\,{index})", "-fps_mode", "passthrough",
+        "-frames:v", "1", "-q:v", FRAME_QUALITY, str(file),
+    ], "could not decode the requested still")
+    if not file.is_file() or not 0 < file.stat().st_size <= MAX_FRAME_BYTES:
+        raise InputError("decoded frame is missing or oversized")
+    return timestamp, file.read_bytes()
 
 
-def _still_targets(clip: Clip, variant: str, attach_still_at_us: int | None) -> tuple[int, ...]:
-    if attach_still_at_us is not None:
-        if type(attach_still_at_us) is not int or not 0 <= attach_still_at_us < clip.duration_us:
-            raise InputError("attach_still_at_us must fall inside the clip")
-        return (attach_still_at_us,)
+def _still_target(clip: Clip) -> int:
     event_middle = (clip.event_start_us + clip.event_end_us) // 2
     in_event = [sample for sample in clip.gaze if clip.event_start_us <= sample["time_us"] < clip.event_end_us]
-    focus_time = event_middle
     if in_event:
         focus = min(in_event, key=lambda sample: (
             sample["uncertainty_radius_px"] is None,
             sample["uncertainty_radius_px"] or 0,
             abs(sample["time_us"] - event_middle),
         ))
-        focus_time = focus["time_us"]
-    if variant == "stills-gaze":
-        return (max(0, clip.event_start_us - 1_000_000), focus_time, clip.event_end_us - 1)
-    if not in_event:
-        focus_time = next((sample["time_us"] for sample in reversed(clip.gaze)
-                           if clip.event_start_us - 5_000_000 <= sample["time_us"] < clip.event_start_us), focus_time)
-    return (focus_time,)
+        return focus["time_us"]
+    return next((sample["time_us"] for sample in reversed(clip.gaze)
+                 if clip.event_start_us - 5_000_000 <= sample["time_us"] < clip.event_start_us), event_middle)
 
 
-def prepare_media(
-    clip: Clip,
-    variant: str,
-    *,
-    attach_still_at_us: int | None = None,
-) -> tuple[bytes | None, tuple[tuple[int, bytes], ...], tuple[dict[str, Any], ...]]:
-    """Prepare provider media and metadata for one controlled experiment variant."""
+def prepare_media(clip: Clip) -> tuple[bytes, tuple[tuple[int, bytes], ...], tuple[dict[str, Any], ...]]:
+    """Prepare the screen video, one timestamped still, and bounded gaze hints."""
 
-    if variant not in {"video", "video-gaze", "video-gaze-still", "stills-gaze"}:
-        raise InputError("variant must be video, video-gaze, video-gaze-still or stills-gaze")
     if shutil.which("ffmpeg") is None:
         raise InputError("ffmpeg is required to prepare screen media")
-    video_bytes: bytes | None = None
-    frames: tuple[tuple[int, bytes], ...] = ()
     with tempfile.TemporaryDirectory(prefix="ojos-media-") as directory:
         workspace = Path(directory)
-        if variant != "stills-gaze":
-            output = workspace / "screen.mp4"
-            _run_ffmpeg([
-                "-copyts", "-start_at_zero", "-i", str(clip.video), "-map", "0:v:0", "-c:v", "copy",
-                "-map_metadata", "-1", "-map_chapters", "-1", "-movflags", "+faststart", str(output),
-            ], "could not prepare video-only provider input")
-            if not output.is_file() or not 0 < output.stat().st_size <= MAX_VIDEO_BYTES:
-                raise InputError("prepared video is empty or too large")
-            video_bytes = output.read_bytes()
-        if variant in {"video-gaze-still", "stills-gaze"}:
-            frames = _extract_frames(clip, _still_targets(clip, variant, attach_still_at_us), workspace)
-    gaze = clip.gaze if variant != "video" else ()
+        output = workspace / "screen.mp4"
+        _run_ffmpeg([
+            "-copyts", "-start_at_zero", "-i", str(clip.video), "-map", "0:v:0", "-c:v", "copy",
+            "-map_metadata", "-1", "-map_chapters", "-1", "-movflags", "+faststart", str(output),
+        ], "could not prepare video-only provider input")
+        if not output.is_file() or not 0 < output.stat().st_size <= MAX_VIDEO_BYTES:
+            raise InputError("prepared video is empty or too large")
+        video_bytes = output.read_bytes()
+        still = _extract_still(clip, _still_target(clip), workspace)
+
+    gaze = clip.gaze
     if len(gaze) > MAX_MODEL_GAZE_SAMPLES:
         last = len(gaze) - 1
         gaze = tuple(gaze[index * last // (MAX_MODEL_GAZE_SAMPLES - 1)] for index in range(MAX_MODEL_GAZE_SAMPLES))
-    return video_bytes, frames, gaze
+    return video_bytes, (still,), gaze

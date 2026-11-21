@@ -1,6 +1,6 @@
 # Ojos assistant MVP proposal
 
-The current integration baseline is [screen analysis with three UI outputs](../agentic_system/assistant/README.md). The question-only tutoring and active task memory in this proposal are a separate follow-up experiment.
+This proposal records the retired question-only tutoring and task-memory experiment. The [current clip assistant](../agentic_system/assistant/README.md) returns a suspected sticking point, possible questions, and a summary.
 
 **Ask one question that helps the person take the next step and remember what they are currently stuck on.** Use the latest clip and a small amount of memory about the active task. Matt’s demo questions are the first target, including questions with missing information.
 

@@ -1,9 +1,7 @@
 """Small, dependency-free adapter for Gemini's Interactions API.
 
-The backend owns task memory and validation. This module only turns a validated
-Ojos job into one provider request and parses Gemini's structured model output.
-It deliberately does not read environment variables, upload files, or retain
-provider conversation state.
+Build one stateless provider request from validated clip evidence and parse the
+structured model output.
 """
 
 from __future__ import annotations

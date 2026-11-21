@@ -1,6 +1,6 @@
 # Ojos screen capture
 
-The standalone Electron harness records the full area of one selected monitor as the user switches between apps. It exports a local v1 bundle and uses one npm dependency plus the system FFmpeg tools. Alejandro can use the recorder from Electron main once the desktop UI is ready for integration.
+The standalone Electron harness verifies capture and clip export on one selected monitor. It exports a local v1 bundle and uses one npm dependency plus the system FFmpeg tools. The desktop uses the same recorder from Electron main.
 
 ## Run
 

@@ -26,11 +26,13 @@ class Recorder {
     this.geometry = null;
     this.frames = [];
     this.gaze = [];
+    this.audio = [];
     this.bytes = 0;
   }
 
-  start() {
+  start(captureEpoch = 0) {
     this.stop();
+    this.epoch = captureEpoch;
     this.sessionId = randomUUID();
     return this.sessionId;
   }
@@ -50,6 +52,7 @@ class Recorder {
         this.geometry.sourceWidth !== sourceWidth || this.geometry.sourceHeight !== sourceHeight)) {
       this.frames = [];
       this.gaze = [];
+      this.audio = [];
       this.bytes = 0;
       this.epoch++;
     }
@@ -62,6 +65,15 @@ class Recorder {
     const oldest = this.frames[0]?.timeUs ?? timeUs;
     while (this.gaze.length && this.gaze[0].time_us < oldest - MAX_GAZE_GAP_US) this.gaze.shift();
     return { captureEpoch: this.epoch, width, height };
+  }
+
+  addAudio({ sessionId, timeUs, pcm }) {
+    if (!this.sessionId || sessionId !== this.sessionId || !Number.isSafeInteger(timeUs) ||
+        !(pcm instanceof ArrayBuffer) || pcm.byteLength !== 19_200 ||
+        timeUs <= (this.audio.at(-1)?.timeUs ?? -Infinity)) return;
+    this.audio.push({ timeUs, pcm: Buffer.from(new Uint8Array(pcm)) });
+    const oldest = Math.max(this.frames[0]?.timeUs ?? 0, timeUs - RETAIN_US);
+    while (this.audio.length > 1200 || this.audio[0]?.timeUs + 50_000 <= oldest) this.audio.shift();
   }
 
   addGaze(sample) {
@@ -111,8 +123,10 @@ class Recorder {
       throw new Error('Screen history does not cover the requested interval.');
     }
     const samples = this.clipGaze(frames, start, end);
+    const audio = this.audio.filter(block => block.timeUs < end && block.timeUs + 50_000 > start);
     return {
       frames,
+      audio,
       gaze: { schema_version: 1, samples },
       manifest: {
         schema_version: 1, session_id: this.sessionId, capture_epoch: this.epoch,
@@ -120,7 +134,7 @@ class Recorder {
         event_end_us: source === 'manual' ? end : eventEnd,
         clip_start_us: start, clip_end_us: end,
         viewport_width_px: this.geometry.width, viewport_height_px: this.geometry.height,
-        audio_status: 'unavailable', gaze_status: samples.length ? 'available' : 'unavailable'
+        audio_status: audio.length ? 'present' : 'unavailable', gaze_status: samples.length ? 'available' : 'unavailable'
       }
     };
   }
@@ -147,7 +161,7 @@ class Recorder {
   }
 }
 
-async function writeBundle({ frames, manifest, gaze }, parent) {
+async function writeBundle({ frames, audio = [], manifest, gaze }, parent, { signal } = {}) {
   const scratch = await fs.mkdtemp(path.join(os.tmpdir(), 'ojos-frames-'));
   let output;
   try {
@@ -156,6 +170,7 @@ async function writeBundle({ frames, manifest, gaze }, parent) {
     const end = manifest.clip_end_us;
     const lastDurationMs = (end - frames.at(-1).timeUs) / 1000;
     for (const [index, frame] of frames.entries()) {
+      signal?.throwIfAborted();
       const name = `frame-${index}.jpg`;
       await fs.writeFile(path.join(scratch, name), frame.jpeg);
       const nextUs = frames[index + 1]?.timeUs ?? end;
@@ -163,18 +178,32 @@ async function writeBundle({ frames, manifest, gaze }, parent) {
     }
     await fs.writeFile(path.join(scratch, 'clip.ffconcat'), list.join('\n') + '\n');
     const video = path.join(output, 'video.mp4');
+    const audioInput = [];
+    const audioOutput = ['-an'];
+    if (audio.length) {
+      const sampleBytes = 8; // stereo float32
+      const toFrames = us => Math.round(us * 48_000 / 1e6);
+      const pcm = Buffer.alloc(toFrames(end - manifest.clip_start_us) * sampleBytes);
+      for (const block of audio) {
+        const offset = toFrames(block.timeUs - manifest.clip_start_us) * sampleBytes;
+        if (offset < pcm.length) block.pcm.copy(pcm, Math.max(0, offset), Math.max(0, -offset));
+      }
+      await fs.writeFile(path.join(scratch, 'playback.f32'), pcm);
+      audioInput.push('-f', 'f32le', '-ar', '48000', '-ac', '2', '-i', 'playback.f32');
+      audioOutput.splice(0, 1, '-c:a', 'aac', '-b:a', '128k');
+    }
     await run('ffmpeg', [
       '-nostdin', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', 'clip.ffconcat',
-      '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21', '-maxrate', '8M',
+      ...audioInput, ...audioOutput, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21', '-maxrate', '8M',
       '-bufsize', '8M', '-pix_fmt', 'yuv420p', '-level:v', '4.1', '-bf', '0', '-enc_time_base', '1:1000',
       // Extend the last encoded sample to the actual clip boundary.
       '-bsf:v', `setts=duration='if(eq(N,${frames.length - 1}),${lastDurationMs},DURATION)'`,
       '-fps_mode', 'vfr', '-video_track_timescale', '1000', '-movflags', '+faststart', video
-    ], { cwd: scratch, windowsHide: true, timeout: 60_000 });
+    ], { cwd: scratch, windowsHide: true, timeout: 60_000, signal });
     const { stdout } = await run('ffprobe', [
       '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=codec_name,width,height,start_time,duration',
       '-of', 'json', video
-    ], { windowsHide: true, timeout: 10_000 });
+    ], { windowsHide: true, timeout: 10_000, signal });
     const [stream] = JSON.parse(stdout).streams;
     const durationUs = Number(stream?.duration) * 1e6;
     if (stream?.codec_name !== 'h264' || stream.width !== manifest.viewport_width_px ||

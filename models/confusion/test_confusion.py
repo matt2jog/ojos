@@ -1,5 +1,6 @@
 """Regression checks for chunk state and vision worker event boundaries."""
 
+import json
 import tempfile
 import unittest
 import zipfile
@@ -8,7 +9,6 @@ from pathlib import Path
 from evaluate_intervals import match
 from intervals import Intervals
 from preprocess import Sampler
-from replay import score_events
 
 SESSION = "77510d91-432d-4c51-b2e6-59cb27986589"
 STEP = 125_000
@@ -25,7 +25,16 @@ class IntervalTests(unittest.TestCase):
 
     def test_protocol_recovery_example(self):
         fixture = Path(__file__).with_name("fixtures") / "recovery.jsonl"
-        (event, published_us), = score_events(fixture, SESSION, "test")
+        detector = Intervals(SESSION, "test", "replay")
+        events = []
+        with fixture.open(encoding="utf-8") as source:
+            for line in source:
+                sample = json.loads(line)
+                event = detector.step(sample["time_us"], sample["frame_id"], sample["probability"],
+                                      reset=sample.get("reset", False))
+                if event:
+                    events.append((event, sample["time_us"]))
+        (event, published_us), = events
         self.assertEqual(event["source"], "replay")
         self.assertEqual((event["start_us"], event["end_us"], published_us), (14_000_000, 18_000_000, 19_000_000))
         self.assertEqual((event["first_frame_id"], event["last_frame_id"]), (112, 143))

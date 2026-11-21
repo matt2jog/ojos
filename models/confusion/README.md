@@ -65,10 +65,9 @@ For authorized DAiSEE research, pass the official archive or the directory conta
 
 The ONNX input names and FP32 shapes are `frame_rgb[1,3,112,112]` and `state_in[1,1,128]`. Outputs are `probabilities[1,2]` and `state_out[1,1,128]`. RGB channels are divided by 255 and normalized with ImageNet mean and standard deviation, recorded in `confusion.json` along with the cadence, model checksum, and YuNet checksum. The export verifies names, dtypes, dimensions, and CPU ONNX Runtime parity across 24 sequential frames, resetting before frame 16. Across the three trained GRUs, the largest absolute differences were 1.64 × 10⁻⁷ in probabilities and 5.36 × 10⁻⁷ in recurrent state.
 
-Run the synthetic recovery trace or a local video through the same interval state machine. Each replay uses a fresh session ID by default and emits replay events as JSONL. The synthetic recovery trace emits `[14 s, 18 s)` at 19 seconds, with contributing frames 112 through 143. The desktop can feed this event to its replay handler alongside the screen and gaze fixture described in the shared protocol.
+Run a local video through the trained model and interval state machine. Each replay uses a fresh session ID by default and emits replay events as JSONL. The recovery trace remains a regression test for the interval state machine.
 
 ```sh
-python models/confusion/replay.py scores models/confusion/fixtures/recovery.jsonl
 python models/confusion/replay.py video <local-video> <export-directory> <yunet-onnx>
 python -m unittest discover -s models/confusion -v
 ```

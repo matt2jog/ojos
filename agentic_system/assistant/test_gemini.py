@@ -1,15 +1,11 @@
 import base64
 import json
-import sys
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 from urllib.error import HTTPError
 
 
-sys.path.insert(0, str(Path(__file__).parent))
-
-from gemini import GeminiProvider, ProviderError  # noqa: E402
+from .gemini import GeminiProvider, ProviderError
 
 
 class _Response:
@@ -58,7 +54,7 @@ class GeminiProviderTests(unittest.TestCase):
         self.assertEqual(image["data"], base64.b64encode(b"jpeg-bytes").decode())
         self.assertIn("1500000", json.dumps(request["input"]))
 
-    @patch("gemini.urlopen")
+    @patch("agentic_system.assistant.gemini.urlopen")
     def test_generate_parses_final_model_output_and_usage(self, urlopen):
         payload = {
             "status": "completed",
@@ -90,7 +86,7 @@ class GeminiProviderTests(unittest.TestCase):
         self.assertEqual(request.get_header("X-goog-api-key"), "test-key")
         self.assertEqual(request.get_header("Content-type"), "application/json")
 
-    @patch("gemini.urlopen")
+    @patch("agentic_system.assistant.gemini.urlopen")
     def test_generate_rejects_incomplete_interaction_without_leaking_body(self, urlopen):
         urlopen.return_value = _Response(b'{"status":"failed","error":"secret prompt"}')
         with self.assertRaisesRegex(ProviderError, "did not complete") as raised:
@@ -103,7 +99,7 @@ class GeminiProviderTests(unittest.TestCase):
             )
         self.assertNotIn("secret prompt", str(raised.exception))
 
-    @patch("gemini.urlopen")
+    @patch("agentic_system.assistant.gemini.urlopen")
     def test_generate_maps_http_error_to_safe_provider_error(self, urlopen):
         urlopen.side_effect = HTTPError(
             "https://generativelanguage.googleapis.com/v1beta/interactions",

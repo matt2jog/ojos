@@ -5,10 +5,9 @@
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
-    "mock": "electron-vite dev -- --mock",
-    "mock:doodles": "electron-vite dev -- --mock --doodles",
     "dev:doodles": "electron-vite dev -- --doodles",
     "build": "electron-vite build",
+    "package": "npm run build && node scripts/package.mjs",
     "typecheck": "tsc"
   },
   "keywords": [],
@@ -19,6 +18,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.3.0",
     "electron": "^45.4.1",
+    "electron-builder": "26.18.0",
     "electron-vite": "^6.0.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.8"

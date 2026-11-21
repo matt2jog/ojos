@@ -1,9 +1,7 @@
 """Small localhost job server for the Ojos assistant prototype.
 
-The desktop sends one v1 multipart job.  The server keeps the job and its event
-history in memory, calls a supplied Tutor in a worker, and exposes the result as
-replayable SSE.  It intentionally has no cloud deployment or provider-specific
-logic.  ``serve`` binds only to loopback.
+The desktop sends one v1 multipart job. The server keeps its event history in
+memory, runs clip analysis in a worker, and exposes replayable SSE on loopback.
 """
 
 from __future__ import annotations
@@ -23,8 +21,9 @@ from typing import Any, Mapping
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
+from .baseline import BaselineAnalyzer
 from .gemini import ProviderError
-from .media import load_tracking
+from .media import Clip, load_bundle
 
 
 MAX_BODY_BYTES = 32 * 1024 * 1024
@@ -126,7 +125,6 @@ class _SessionState:
     epoch: int | None = None
     latest_observation_us: int = -1
     latest_job_id: str | None = None
-    memory: Any = None
     updated_at: float = field(default_factory=time.monotonic)
 
 
@@ -137,7 +135,7 @@ class _Job:
     event_id: str
     epoch: int
     folder: Path
-    clip: Any
+    clip: Clip
     created_at: float = field(default_factory=time.monotonic)
     state: str = "accepted"
     canceled: bool = False
@@ -161,36 +159,19 @@ class _Job:
         shutil.rmtree(self.folder, ignore_errors=True)
 
 
-class TutorServer:
+class JobServer:
     """State container and worker dispatcher used by the HTTP handler."""
 
-    def __init__(self, tutor: Any, token: str):
+    def __init__(self, analyzer: BaselineAnalyzer, token: str):
         if not token:
             raise ValueError("token must not be empty")
-        self.tutor = tutor
+        self.analyzer = analyzer
         self.token = token
         self.jobs: dict[str, _Job] = {}
         self.keys: dict[tuple[str, str], str] = {}
         self.sessions: dict[str, _SessionState] = {}
         self.lock = threading.RLock()
         self.pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ojos-job")
-        self.analysis_slots = threading.BoundedSemaphore(4)
-
-    def analyze_pair(self, fields: Mapping[str, bytes]) -> dict:
-        if not self.analysis_slots.acquire(blocking=False):
-            raise BusyError("local analysis capacity is full")
-        try:
-            with tempfile.TemporaryDirectory(prefix="ojos-analysis-") as directory:
-                video = Path(directory) / "video.mp4"
-                tracking = Path(directory) / "tracking.json"
-                video.write_bytes(fields["video"])
-                tracking.write_bytes(fields["tracking"])
-                analysis = self.tutor.analyze(load_tracking(video, tracking))
-            if analysis.screen_analysis is None:
-                raise ProviderError("Screen analysis output is missing")
-            return {**analysis.screen_analysis, "metrics": analysis.metrics}
-        finally:
-            self.analysis_slots.release()
 
     def stop(self) -> None:
         self.pool.shutdown(wait=False, cancel_futures=True)
@@ -247,9 +228,7 @@ class TutorServer:
             (folder / "manifest.json").write_bytes(fields["manifest"])
             (folder / "gaze.json").write_bytes(fields["gaze"])
             (folder / "video.mp4").write_bytes(fields["video"])
-            from . import media
-
-            clip = media.load_bundle(folder)
+            clip = load_bundle(folder)
         except Exception:
             shutil.rmtree(folder, ignore_errors=True)
             raise
@@ -267,7 +246,6 @@ class TutorServer:
                     if prior.session_id == session_id and not prior.terminal:
                         prior.canceled = True
                         prior.append("job.canceled", {"schema_version": 1, "reason": "new_capture_epoch"})
-                session.memory = None
                 session.latest_observation_us = -1
             elif session.epoch is not None and epoch < session.epoch:
                 shutil.rmtree(folder, ignore_errors=True)
@@ -300,75 +278,39 @@ class TutorServer:
             with self.lock:
                 if not self._current_locked(job):
                     return
-                session = self.sessions[job.session_id]
-                memory = session.memory
                 job.append("job.status", {"schema_version": 1, "phase": "analyzing"})
-            clip = job.clip
-            analysis = self.tutor.analyze(clip, memory=memory, reply=None, variant=None)
-            result = getattr(analysis, "result", None)
-            if not isinstance(result, dict):
-                raise ValueError("tutor returned no result object")
-            self._validate_result(result, clip)
-            result = {key: result[key] for key in ("schema_version", "status", "likely_question", "answer", "evidence")}
-            # Commit the result and memory together.  A newer event, epoch
-            # change, or DELETE that wins this lock invalidates the completion.
+            analysis = self.analyzer.analyze(job.clip).screen_analysis
+            questions = analysis["possible_questions"]
+            result = {
+                "schema_version": 1,
+                "status": "answered" if questions else "insufficient_evidence",
+                "likely_question": questions[0] if questions else None,
+                "answer": analysis["summary"],
+                "evidence": analysis["evidence"],
+            }
+            # Publish both events under the same stale/cancel guard.
             with self.lock:
                 if not self._current_locked(job):
                     return
-                screen_analysis = getattr(analysis, "screen_analysis", None)
-                if screen_analysis is not None:
-                    if not isinstance(screen_analysis, dict):
-                        raise ValueError("tutor screen_analysis must be a JSON object")
-                session.memory = analysis.memory
-                session.updated_at = time.monotonic()
-                if screen_analysis is not None:
-                    # Keep this additive diagnostic separate from the v1 result.
-                    # Both events are committed under the same stale/cancel guard
-                    # and are emitted in analysis-then-result order.
-                    job.append("job.analysis", screen_analysis)
+                self.sessions[job.session_id].updated_at = time.monotonic()
+                job.append("job.analysis", analysis)
                 job.append("job.result", result)
         except Exception as exc:  # provider and validation errors become typed events
             with self.lock:
                 if not self._current_locked(job):
                     return
-                code = "provider_error" if exc.__class__.__name__ == "ProviderError" else "analysis_error"
+                code = "provider_error" if isinstance(exc, ProviderError) else "analysis_error"
                 message = str(exc) if code == "provider_error" else "Could not analyze the clip"
                 job.append("job.error", {"schema_version": 1, "code": code, "message": message, "retryable": code == "provider_error"})
         finally:
             job.close_media()
-
-    @staticmethod
-    def _validate_result(result: dict[str, Any], clip: Any) -> None:
-        required = {"schema_version", "status", "likely_question", "answer", "evidence"}
-        if not required <= result.keys():
-            raise ValueError("tutor result is missing required fields")
-        if result.get("schema_version") != 1:
-            raise ValueError("tutor result schema_version must be 1")
-        if result.get("status") not in {"answered", "insufficient_evidence"}:
-            raise ValueError("tutor result has invalid status")
-        if not isinstance(result.get("answer"), str) or not result["answer"].strip():
-            raise ValueError("tutor answer must be nonempty text")
-        evidence = result.get("evidence")
-        if not isinstance(evidence, list):
-            raise ValueError("tutor evidence must be an array")
-        if result["status"] == "insufficient_evidence" and (result.get("likely_question") is not None or evidence):
-            raise ValueError("insufficient_evidence requires null likely_question and empty evidence")
-        if result["status"] == "answered" and (not isinstance(result.get("likely_question"), str) or not result["likely_question"].strip()):
-            raise ValueError("answered result requires likely_question text")
-        duration = int(getattr(clip, "duration_us"))
-        for item in evidence:
-            if not isinstance(item, dict) or not isinstance(item.get("time_us"), int) or not isinstance(item.get("detail"), str):
-                raise ValueError("each evidence item needs time_us and detail")
-            if not 0 <= item["time_us"] < duration or not item["detail"].strip():
-                raise ValueError("evidence time or detail is invalid")
-
 
 class _Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "OjosPrototype/0.1"
 
     @property
-    def state(self) -> TutorServer:
+    def state(self) -> JobServer:
         return self.server.ojos_state  # type: ignore[attr-defined]
 
     def log_message(self, _format: str, *_args: Any) -> None:
@@ -393,7 +335,7 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         route = urlsplit(self.path).path
-        if route not in ("/v1/jobs", "/v1/analyze"):
+        if route != "/v1/jobs":
             self._send(HTTPStatus.NOT_FOUND, {"error": "not_found"})
             return
         if not self._authorized():
@@ -411,19 +353,12 @@ class _Handler(BaseHTTPRequestHandler):
             return
         body = self.rfile.read(length)
         try:
-            if route == "/v1/analyze":
-                fields = _multipart(body, content_type, {"tracking", "video"})
-                self._send(HTTPStatus.OK, self.state.analyze_pair(fields))
-                return
             job = self.state.create_job(_multipart(body, content_type, {"manifest", "gaze", "video"}))
         except BusyError as exc:
             self._send(HTTPStatus.TOO_MANY_REQUESTS, {"error": "busy", "message": str(exc)})
             return
         except ValueError as exc:
             self._send(HTTPStatus.BAD_REQUEST, {"error": "invalid_job", "message": str(exc)[:500]})
-            return
-        except ProviderError as exc:
-            self._send(HTTPStatus.BAD_GATEWAY, {"error": "provider_error", "message": str(exc)})
             return
         self._send(HTTPStatus.ACCEPTED, {"job_id": job.job_id})
 
@@ -504,25 +439,25 @@ class _HTTPServer(ThreadingHTTPServer):
     allow_reuse_address = True
     daemon_threads = True
 
-    def __init__(self, address: tuple[str, int], state: TutorServer):
+    def __init__(self, address: tuple[str, int], state: JobServer):
         super().__init__(address, _Handler)
         self.ojos_state = state
 
     @property
-    def state(self) -> TutorServer:
+    def state(self) -> JobServer:
         return self.ojos_state
 
 
-def build_server(tutor: Any, *, token: str, port: int = 8765) -> _HTTPServer:
+def build_server(analyzer: BaselineAnalyzer, *, token: str, port: int = 8765) -> _HTTPServer:
     """Build a testable server.  Call ``server.shutdown()`` to stop it."""
 
-    return _HTTPServer(("127.0.0.1", port), TutorServer(tutor, token))
+    return _HTTPServer(("127.0.0.1", port), JobServer(analyzer, token))
 
 
-def serve(tutor: Any, *, token: str, port: int = 8765) -> None:
+def serve(analyzer: BaselineAnalyzer, *, token: str, port: int = 8766) -> None:
     """Serve the local prototype until interrupted."""
 
-    server = build_server(tutor, token=token, port=port)
+    server = build_server(analyzer, token=token, port=port)
     print(f"Ojos assistant listening on http://127.0.0.1:{server.server_port}", flush=True)
     try:
         server.serve_forever(poll_interval=0.2)

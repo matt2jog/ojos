@@ -59,7 +59,7 @@ test('rejects stale epochs, early events and intervals wholly inside a screen ga
   assert.equal(recorder.frames.length, 1);
 });
 
-test('exports an aligned MP4 from the delayed v1 replay and extracts the observed frame', async () => {
+test('exports an MP4 with the observed frame, gaze and playback tone aligned', async () => {
   const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'ojos-recorder-test-'));
   try {
     async function color(name) {
@@ -77,12 +77,18 @@ test('exports an aligned MP4 from the delayed v1 replay and extracts the observe
       add(recorder, time, time === 9_400_000 ? before : after);
     }
     gaze(recorder, 9_400_000);
+    const tone = new Float32Array(4800);
+    for (let i = 0; i < tone.length / 2; i++) {
+      tone[2 * i] = tone[2 * i + 1] = Math.sin(i * 2 * Math.PI * 440 / 48_000) * 0.5;
+    }
+    recorder.addAudio({ sessionId: recorder.sessionId, timeUs: 9_400_000, pcm: tone.buffer });
     const bundle = recorder.interval(event(recorder), 19_200_000);
     assert.equal(bundle.manifest.clip_start_us, 4_000_000);
     assert.equal(bundle.manifest.clip_end_us, 19_000_000);
     assert.equal(bundle.gaze.samples[27].time_us, 5_400_000);
     assert.equal(bundle.gaze.samples[27].x_px, 151);
     assert.equal(bundle.gaze.samples[28].valid, false);
+    assert.equal(bundle.manifest.audio_status, 'present');
     const output = await writeBundle(bundle, folder);
     const video = path.join(output, 'video.mp4');
     const { stdout } = await run('ffprobe', [
@@ -99,6 +105,13 @@ test('exports an aligned MP4 from the delayed v1 replay and extracts the observe
       '-frames:v', '1', '-f', 'rawvideo', 'pipe:1'
     ], { encoding: 'buffer', windowsHide: true });
     assert.ok(pixel[0] > 200 && pixel[2] < 40, 'expected the red frame shown at fixation');
+    const { stdout: audio } = await run('ffmpeg', [
+      '-nostdin', '-v', 'error', '-i', video, '-map', '0:a:0', '-ac', '1', '-ar', '8000',
+      '-f', 's16le', 'pipe:1'
+    ], { encoding: 'buffer', windowsHide: true });
+    let onset = 0;
+    while (onset < audio.length && Math.abs(audio.readInt16LE(onset)) < 2000) onset += 2;
+    assert.ok(Math.abs(onset / 16_000 - 5.4) < 0.02, 'expected playback onset near 5.4 seconds');
     await assert.rejects(extractFrame(video, 15, image), /outside/);
     assert.equal(JSON.parse(await fs.readFile(path.join(output, 'gaze.json'), 'utf8')).samples.length, 75);
   } finally {

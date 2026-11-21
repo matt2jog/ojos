@@ -34,7 +34,8 @@ export function connectWebEyeTrack(worker, {geometry, sessionId, captureEpoch, a
   }
 
   const ready = request({config: {
-    variant: "wet", backend: "wasm", tfThreads: 2, matrixLayout: "stock", landmarkDelegate: "CPU",
+    variant: "wet", backend: "wasm", tfThreads: globalThis.crossOriginIsolated ? 2 : 1,
+    matrixLayout: "stock", landmarkDelegate: "CPU",
     dimensions: [1280, 720], geometry, sessionId, captureEpoch, assetsBaseUrl,
   }}).catch(error => { fail(error); throw error; });
 

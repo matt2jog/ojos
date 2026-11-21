@@ -88,7 +88,7 @@ This is the legacy single-tracker gaze sidecar. It uses a sorted 200,000 µs gri
 
 ### Gaze and confusion sidecar v2
 
-`exportVisionSeries` in [`models/vision/index.mjs`](../models/vision/index.mjs) returns `{gaze_status, gaze}`. Place `gaze_status` in the manifest and send `gaze` as the multipart JSON part. The [local MVP backend](../agentic_system/assistant/MVP_HANDOFF.md) reads the fused point and box and passes bounded gaze hints with the screen video and a still. Its Gemini request excludes playback audio, individual tracker predictions and confusion scores. The full sidecar makes those numeric fields available for future experiments.
+`exportVisionSeries` in [`models/vision/index.mjs`](../models/vision/index.mjs) returns `{gaze_status, gaze}`. Place `gaze_status` in the manifest and send `gaze` as the multipart JSON part. The [local clip assistant](../agentic_system/assistant/README.md) reads the fused point and box and passes bounded gaze hints with the screen video and a still. Its Gemini request excludes playback audio, individual tracker predictions and confusion scores. The full sidecar makes those numeric fields available for future experiments.
 
 ```json
 {
@@ -124,7 +124,7 @@ This is the legacy single-tracker gaze sidecar. It uses a sorted 200,000 µs gri
 - With one usable tracker, the average and box use that tracker. If both points are usable individually but too far apart in time, preserve both in the row and use model1 for the fused fields. `fusion_mode` is `paired`, `model1_only`, `model2_only`, or `unavailable`. With neither tracker, the coordinates, offsets, radii, average and box are null. The sidecar's confusion model ID can be null when the worker is disabled.
 - Scope histories to the active session and capture epoch. The desktop uses the recorded clip start for the sidecar and rebases event bounds to the same clock before submitting the job. Do not send pixels from a crop of the display as though they belonged to the full viewport.
 
-For a standalone fixture, run `node models/vision/replay.mjs models/vision/fixtures/handoff.json`. It emits a paired row, a single-tracker row, and an unavailable row that share a clip-relative clock.
+The paired, single-tracker, and unavailable export cases are covered by `node --test models/vision/vision.test.mjs`.
 
 ## Backend to desktop
 

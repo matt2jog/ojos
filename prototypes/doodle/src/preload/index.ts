@@ -25,6 +25,19 @@ const setup: SetupApi = {
   selectDisplay: (id) => ipcRenderer.invoke('setup:select-display', id),
   fullscreen: (id) => ipcRenderer.invoke('setup:fullscreen', id),
   finish: () => ipcRenderer.invoke('setup:finish'),
+  prepareCalibration: () => ipcRenderer.invoke('setup:prepare-calibration'),
+  onCalibrationProgress(fn) {
+    const handler = (_e: IpcRendererEvent, stage: Parameters<typeof fn>[0]): void => fn(stage)
+    ipcRenderer.on('setup:calibration-progress', handler)
+    return () => ipcRenderer.removeListener('setup:calibration-progress', handler)
+  },
+  calibrationClock: () => ipcRenderer.invoke('setup:calibration-clock'),
+  onCalibrationObservation(fn) {
+    const handler = (_e: IpcRendererEvent, point: Parameters<typeof fn>[0]): void => fn(point)
+    ipcRenderer.on('setup:gaze', handler)
+    return () => ipcRenderer.removeListener('setup:gaze', handler)
+  },
+  stopCalibration: () => ipcRenderer.send('setup:stop-calibration'),
   store: {
     getItem: (key) => ipcRenderer.sendSync('store:get', key),
     setItem: (key, value) => void ipcRenderer.sendSync('store:set', key, value),

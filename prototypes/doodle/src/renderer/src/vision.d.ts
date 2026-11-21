@@ -55,3 +55,34 @@ declare module '@vision/calibration.mjs' {
   export function saveTrackerProfile(storage: Storage, tracker: Tracker, geometry: CalibrationGeometry, profile: unknown): void
   export function loadTrackerProfile(storage: Storage, tracker: Tracker, geometry: CalibrationGeometry): unknown | null
 }
+
+declare module '@vision/index.mjs' {
+  import type { CalibrationGeometry, Tracker } from '@vision/calibration.mjs'
+  import type { Interval, VisionExport } from '../../shared/capture'
+  type Packet = { frame: VideoFrame; timeUs: number; frameId: number }
+  type WorkerConfig = { geometry: CalibrationGeometry; sessionId: string; captureEpoch: number; assetsBaseUrl: string }
+  export function connectWebEyeTrack(worker: Worker, config: WorkerConfig): {
+    ready: Promise<unknown>
+    send(packet: Packet): Promise<unknown>
+    close(): void
+  }
+  export class VisionSession {
+    constructor(config: Omit<WorkerConfig, 'assetsBaseUrl'> & {
+      profiles: Record<string, unknown>
+      workers: Record<string, (packet: Packet) => Promise<unknown>>
+      clockUs(): number
+      onInterval(event: Interval): void
+      onObservation(tracker: Tracker, timeUs: number, raw: unknown): void
+      onError(error: Error, lane: string): void
+    })
+    submit(frame: VideoFrame, timeUs: number, frameId: number): void
+    exportClip(startUs: number, endUs: number): VisionExport
+  }
+}
+
+declare module '@vision/series.mjs' {
+  import type { VisionExport } from '../../shared/capture'
+  export function exportVisionSeries(config: {
+    sessionId: string; captureEpoch: number; clipStartUs: number; clipEndUs: number; width: number; height: number
+  }): VisionExport
+}
