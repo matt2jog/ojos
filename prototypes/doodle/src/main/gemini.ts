@@ -1,9 +1,6 @@
 import { GoogleGenAI, type GenerateContentConfig } from '@google/genai'
 import type { Cmd, Gaze, Suggestions, Turn } from '../shared/commands'
 
-const CONTEXT = (g: Gaze): string =>
-  `The user looked visibly confused for a few seconds while looking at their screen (screenshot attached). Their approximate gaze is [${g.x}, ${g.y}] on a 0-1000 scale (x, y, origin top-left). Gaze is noisy: treat it as "somewhere within ~150 units of this point" and use the screenshot to find the specific thing (paragraph, line of code, error, formula, UI element) they are most likely stuck on.`
-
 export type GazeSource = 'tracked' | 'pointer' | 'unavailable'
 
 type Screen = { pngBase64: string; gaze: Gaze; gazeSource?: GazeSource }
@@ -72,31 +69,51 @@ function normalizeSuggestions(value: unknown): Suggestions {
   return { stuck_on: topic, questions, summary: clean(row.summary, 300) || undefined }
 }
 
-const EXPLAIN_PROMPT = (g: Gaze, question: string | undefined, doodles: boolean): string => `You are Ojos, a calm tutor. ${CONTEXT(g)}
-
-${question ? `They asked: "${question}". Answer exactly that.` : 'Work out what they are most likely stuck on and explain it.'}
-
-Output ONLY newline-delimited JSON, one object per line, no markdown, no code fences. Allowed lines:
-{"title": "<the question being answered, max 8 words>"}   (always first)
-{"say": "<one short sentence>"}
-${
-  doodles
-    ? `{"draw": "circle", "box": [x1, y1, x2, y2], "color": "red|blue|green|yellow"}
-{"draw": "underline", "from": [x, y], "to": [x, y], "color": "..."}
-{"draw": "arrow", "from": [x, y], "to": [x, y], "color": "..."}
-{"draw": "highlight", "box": [x1, y1, x2, y2], "color": "yellow"}
-{"draw": "label", "at": [x, y], "text": "<2-4 words>", "color": "..."}
-
-Draw on the screen while explaining: a draw line, then the say line about it. All coordinates are 0-1000 over the screenshot and must point at the real on-screen element. At most 5 draws. Labels go in empty space, not on top of text.`
-    : ''
+type ExplainOptions = Screen & Model & {
+  question?: string
+  source?: 'typed' | 'suggestion'
+  history?: { firstPngBase64: string; turns: Turn[] }
+  doodles: boolean
+  isCurrent: () => boolean
+  onCmd: (cmd: Cmd) => void
 }
-Rules: 2-5 say lines. Plain language, no jargon, refer to what is visible on their screen. Be concrete and brief.`
 
-const FOLLOWUP_PROMPT = (question: string | undefined, doodles: boolean): string =>
-  `${question ? `They followed up: "${question}". Answer exactly that, building on what you already said.` : 'They want this explained again. Explain what they are most likely stuck on now.'} A current screenshot is attached, and the screen may have changed since the first one. Same output format: the title line first, then 1-5 say lines${doodles ? ', with draw lines placed on the current screenshot' : ''}. Do not repeat earlier sentences.`
+export const MAX_HISTORY_TURNS = 4
 
-const asLines = (t: Turn): string =>
-  [{ title: t.title || t.question || 'Explanation' }, ...t.says.map((say) => ({ say }))].map((c) => JSON.stringify(c)).join('\n')
+const EXPLAIN_POLICY = `${SCREEN_POLICY}
+Answer the user question first. For a selected practice hint, explain the key idea and give one next move; leave the remaining exercise to the learner. For a typed question, answer directly and concretely. If there is no question, give one useful next step for the clearest visible task, or ask what to focus on when evidence is weak.
+Use the current screenshot for screen facts. Earlier text is background context; an earlier screenshot, when provided, is only for comparison. If the necessary details are unreadable or missing, say what is missing.
+Output newline-delimited JSON, one object per line, without markdown fences. Begin with {"title":"a short topic"}. Then send 1–5 {"say":"one concise sentence"} objects. Use plain language.`
+
+const DRAW_POLICY = `
+You may emit up to five drawing objects immediately before the sentence that refers to them. Use actual elements in the current screenshot and 0-1000 coordinates from the top-left:
+{"draw":"circle","box":[x1,y1,x2,y2],"color":"green"}
+{"draw":"highlight","box":[x1,y1,x2,y2],"color":"yellow"}
+{"draw":"underline","from":[x,y],"to":[x,y],"color":"blue"}
+{"draw":"arrow","from":[x,y],"to":[x,y],"color":"red"}
+{"draw":"label","at":[x,y],"text":"short label","color":"green"}
+Leave doodles out if you cannot locate the target.`
+
+function explainContents(opts: ExplainOptions) {
+  const turns = (opts.history?.turns ?? []).filter(turn => turn.says.length > 0).slice(-MAX_HISTORY_TURNS)
+  const context = turns.map(turn => ({
+    question: clean(turn.question, 360) || clean(turn.title, 100),
+    answer: clean(turn.says.join(' '), 560)
+  }))
+  const question = clean(opts.question, 2000)
+  const useOriginal = opts.history && opts.history.firstPngBase64 !== opts.pngBase64 &&
+    /\b(?:first|initial|original) (?:screen|screenshot|image)\b/i.test(question)
+  const parts = [
+    ...(context.length ? [{ text: 'Earlier conversation (reference only): ' + JSON.stringify(context) }] : []),
+    ...(useOriginal ? [{ text: 'Original screenshot (reference only):' }, image(opts.history!.firstPngBase64)] : []),
+    { text: 'Current screenshot:' },
+    image(opts.pngBase64),
+    { text: opts.source === 'typed'
+      ? 'Typed user question: ' + question
+      : question ? `Selected hint question: ${question}\n${focus(opts)}` : `User requested a general hint. ${focus(opts)}` }
+  ]
+  return [{ role: 'user', parts }]
+}
 
 /** One structured Gemini call. Weak evidence leaves the existing generic nudge available. */
 export async function suggest(opts: Screen & Model): Promise<Suggestions> {
@@ -121,40 +138,18 @@ export async function suggest(opts: Screen & Model): Promise<Suggestions> {
 }
 
 /** Step 2 (explainer): streams parsed commands. Stops early when isCurrent() turns false. */
-export async function streamGemini(opts: {
-  apiKey: string
-  model: string
-  pngBase64: string
-  gaze: Gaze
-  question?: string
-  /** Earlier turns of this conversation, with the screenshot the first one was asked about. */
-  history?: { firstPngBase64: string; turns: Turn[] }
-  doodles: boolean
-  isCurrent: () => boolean
-  onCmd: (cmd: Cmd) => void
-}): Promise<void> {
+export async function streamGemini(opts: ExplainOptions): Promise<void> {
+  if (!opts.isCurrent()) return
+  opts.signal?.throwIfAborted()
   const ai = new GoogleGenAI({ apiKey: opts.apiKey })
-  const image = (data: string): { inlineData: { mimeType: string; data: string } } => ({
-    inlineData: { mimeType: 'image/png', data }
+  const stream = await ai.models.generateContentStream({
+    model: opts.model,
+    contents: explainContents(opts),
+    config: {
+      ...requestConfig(opts.signal, 30_000),
+      systemInstruction: EXPLAIN_POLICY + (opts.doodles ? DRAW_POLICY : '')
+    }
   })
-  const turns = opts.history?.turns ?? []
-  // Only the first and the current screenshot are sent; turns in between are text.
-  const contents = turns.length
-    ? [
-        ...turns.flatMap((t, i) => [
-          {
-            role: 'user',
-            parts:
-              i === 0
-                ? [image(opts.history!.firstPngBase64), { text: EXPLAIN_PROMPT(opts.gaze, t.question, opts.doodles) }]
-                : [{ text: FOLLOWUP_PROMPT(t.question, opts.doodles) }]
-          },
-          { role: 'model', parts: [{ text: asLines(t) }] }
-        ]),
-        { role: 'user', parts: [image(opts.pngBase64), { text: FOLLOWUP_PROMPT(opts.question, opts.doodles) }] }
-      ]
-    : [{ role: 'user', parts: [image(opts.pngBase64), { text: EXPLAIN_PROMPT(opts.gaze, opts.question, opts.doodles) }] }]
-  const stream = await ai.models.generateContentStream({ model: opts.model, contents })
 
   const emit = (raw: string): void => {
     const line = raw.trim().replace(/^```(json)?|```$/g, '').trim()
