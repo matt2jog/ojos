@@ -1,4 +1,4 @@
-import { GoogleGenAI, type GenerateContentConfig } from '@google/genai'
+import { GoogleGenAI, ThinkingLevel, type GenerateContentConfig } from '@google/genai'
 import type { Box, Cmd, Color, DrawCmd, Gaze, Point, Suggestions, Turn } from '../shared/commands'
 
 export type GazeSource = 'tracked' | 'pointer' | 'unavailable'
@@ -36,11 +36,14 @@ function focus({ gaze, gazeSource = 'tracked' }: Screen): string {
   return `${label}: [${Math.round(gaze.x)}, ${Math.round(gaze.y)}] on a 0-1000 scale from the top-left.`
 }
 
-function requestConfig(signal: AbortSignal | undefined, timeoutMs: number): GenerateContentConfig {
+function requestConfig({ model, signal }: Model, timeoutMs: number): GenerateContentConfig {
   const timeout = AbortSignal.timeout(timeoutMs)
   return {
     abortSignal: signal ? AbortSignal.any([signal, timeout]) : timeout,
-    httpOptions: { retryOptions: { attempts: 1 } }
+    httpOptions: { retryOptions: { attempts: 1 } },
+    ...(model === 'gemini-4-hydrogen' || model === 'gemini-4-neon'
+      ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
+      : {})
   }
 }
 
@@ -124,7 +127,7 @@ export async function suggest(opts: Screen & Model): Promise<Suggestions> {
     model: opts.model,
     contents: [{ role: 'user', parts: [image(opts.pngBase64), { text: focus(opts) }] }],
     config: {
-      ...requestConfig(opts.signal, 14_000),
+      ...requestConfig(opts, 14_000),
       systemInstruction: SUGGEST_POLICY,
       responseMimeType: 'application/json',
       responseJsonSchema: SUGGEST_SCHEMA
@@ -195,7 +198,7 @@ export async function streamGemini(opts: ExplainOptions): Promise<void> {
     model: opts.model,
     contents: explainContents(opts),
     config: {
-      ...requestConfig(opts.signal, 30_000),
+      ...requestConfig(opts, 30_000),
       systemInstruction: EXPLAIN_POLICY + (opts.doodles ? DRAW_POLICY : '')
     }
   })
