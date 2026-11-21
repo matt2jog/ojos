@@ -26,6 +26,23 @@ export interface SetupApi {
   /** Full-screen the setup window on a display (for calibration), or restore it with null. */
   fullscreen(displayId: string | null): Promise<void>
   finish(): Promise<void>
+  /** Close the window without changing the first-run flag (used by Settings). */
+  close(): Promise<void>
+  settings(): Promise<AppSettings>
+  setSensitivity(high: number): Promise<void>
+  quit(): Promise<void>
   /** Synchronous local storage (settings, calibration profiles), backed by a file in userData. */
   store: { getItem(key: string): string | null; setItem(key: string, value: string): void; removeItem(key: string): void }
+}
+
+export interface AppSettings {
+  mock: boolean
+  suggestModel: string
+  explainModel: string
+  /** Confusion score (0-1) that must hold before Ojos offers help. Lower = more eager. */
+  sensitivity: number
+  screenPermission: PermissionState
+  cameraPermission: PermissionState
+  logFile: string
+  platform: string
 }

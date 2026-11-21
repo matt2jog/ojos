@@ -7,7 +7,7 @@ import { createInterface } from 'readline'
 import { existsSync } from 'fs'
 import { randomUUID } from 'crypto'
 import { join, resolve } from 'path'
-import { encodedViewport, selectedDisplay } from './setup'
+import { encodedViewport, selectedDisplay, storeGet } from './setup'
 import type { LiveGaze, VisionConfig, VisionStatus } from '../shared/vision'
 
 const mac = process.platform === 'darwin'
@@ -30,6 +30,17 @@ export const visionAvailable = (): { confusion: boolean; model1: boolean } => ({
   confusion: existsSync(join(CONFUSION_DIR, 'confusion.onnx')) && existsSync(PYTHON) && existsSync(WORKER),
   model1: existsSync(join(WET_DIST, 'bench-worker.js'))
 })
+
+/** Confusion score that must hold before a nudge: Settings value, then env, then 0.65. */
+export const sensitivity = (): number =>
+  Number(storeGet('trigger.high')) || Number(process.env.OJOS_TRIGGER_HIGH) || 0.65
+
+/** Apply changed settings or a new calibration: fresh capture epoch in the vision window. */
+export function reloadVision(): void {
+  captureEpoch++
+  latestGaze = null
+  visionWin?.webContents.send('vision:reload')
+}
 
 // ---------- native confusion worker ----------
 let py: ChildProcessWithoutNullStreams | null = null
@@ -147,7 +158,7 @@ export function startVision(opts: { onInterval(gaze: LiveGaze | null): void; onS
       }
     }
     return { sessionId, captureEpoch, epochMs: EPOCH_MS, display: displayGeometry(selectedDisplay()), workers: a,
-      trigger: { high: Number(process.env.OJOS_TRIGGER_HIGH) || 0.65, confirmMs: Number(process.env.OJOS_TRIGGER_MS) || 1000 } }
+      trigger: { high: sensitivity(), confirmMs: Number(process.env.OJOS_TRIGGER_MS) || 1000 } }
   })
   ipcMain.handle('vision:confusion', async (_e, jpeg: Uint8Array, timeUs: number, frameId: number) => {
     if (!py || !pyReady) throw new Error('confusion worker is not running')
