@@ -1,7 +1,7 @@
 """Session-clock state machine for schema version 1 interval events."""
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from uuid import UUID, uuid4
 
 WARMUP_US = 4_000_000
@@ -56,8 +56,19 @@ class Intervals:
         self.smoothed = None
         self.last_usable = None
         self.previous_usable = False
+        self._clear_run()
+
+    def _clear_run(self):
         self.high = self.active = None
         self.low_us = self.before_low = self.last_contributing = None
+
+    def set_high(self, high):
+        """Apply a threshold and discard any candidate formed under the previous threshold."""
+        if not math.isfinite(high) or not self.policy.low < high <= 1:
+            raise ValueError("Invalid confusion trigger threshold")
+        if high != self.policy.high:
+            self.policy = replace(self.policy, high=high)
+            self._clear_run()
 
     def publish(self, end_us, last_frame_id, time_us):
         event = {

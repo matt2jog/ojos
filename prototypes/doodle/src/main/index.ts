@@ -1,11 +1,12 @@
-import { app, BrowserWindow, globalShortcut, screen, ipcMain, Menu, nativeImage, powerMonitor, Tray, type Display } from 'electron'
+import { app, BrowserWindow, globalShortcut, screen, ipcMain, Menu, nativeImage, powerMonitor, Tray, type Display, type MenuItemConstructorOptions } from 'electron'
 import { join } from 'path'
 import { randomUUID } from 'node:crypto'
 import { readFile, rm } from 'node:fs/promises'
 import { analyzeBundle } from '@assistant'
 import type { ChatHistory, Gaze } from '../shared/commands'
 import type { Interval, ViewportRect, VisionExport } from '../shared/capture'
-import { calibrationDisplay, configuredDisplay, openSetup, registerSetupIpc, selectedDisplay, setupContents, setupDone, storeGet, storeSet } from './setup'
+import { calibrationDisplay, closeSettings, configuredDisplay, configuringSetup, openSetup, permission, registerSetupIpc, selectedDisplay, settingsContents, setupContents, setupDone, storeGet, storeSet, triggerHigh } from './setup'
+import { clampTriggerHigh, type AppSettings } from '../shared/setup'
 import { RecordingService } from './capture/service'
 import { assistant, chatHistory, savedChats, stopAssistant, streamChatTurn } from './assistant'
 import { configureRuntime } from './runtime'
@@ -72,15 +73,30 @@ function setPickKeys(on: boolean): void {
 }
 
 let paused = false
+let hidden = false
+let overlayFocusAt = 0
+
+function setHidden(value: boolean): void {
+  if (hidden === value) return
+  hidden = value
+  if (hidden) {
+    dismiss()
+    win.hide()
+  } else if (!settingsContents()) {
+    win.showInactive()
+  }
+  refreshTray()
+}
 
 /** Confusion detected: show the mascot and start guessing the question. Never explains on its own. */
 async function nudge(interval?: Interval): Promise<void> {
-  if (paused || chatRequest || chatListOpen || (interval && pending) || !capture?.isRecording()) return
+  if (paused || settingsContents() || chatRequest || chatListOpen || (interval && (hidden || pending)) || !capture?.isRecording()) return
+  if (hidden) setHidden(false)
   if (interval && chatId && chatAnswered && chatPane) {
     const id = chatId
     const pane = chatPane
     const overlap = await capture.gazedAtPane(interval, pane, paneIoU)
-    if (paused || chatRequest || chatListOpen || id !== chatId || pane !== chatPane) return
+    if (paused || hidden || settingsContents() || chatRequest || chatListOpen || id !== chatId || pane !== chatPane) return
     if (overlap) {
       if (!chatHelpOffered) {
         chatHelpOffered = true
@@ -128,7 +144,7 @@ async function nudge(interval?: Interval): Promise<void> {
 
 /** Taking a fresh screen suggestion opens a chat. Typed follow-ups reuse its ID. */
 async function ask(question: string | undefined, picked = false): Promise<void> {
-  if (chatRequest || chatListOpen || (picked && !pending) ||
+  if (hidden || settingsContents() || chatRequest || chatListOpen || (picked && !pending) ||
       (question !== undefined && typeof question !== 'string')) return
   const message = question?.trim() || 'Explain what I’m looking at.'
   if (message.length > 8000) return
@@ -183,6 +199,7 @@ function clearNudge(): void {
 
 async function openSavedChat(id: string): Promise<void> {
   if (chatRequest || !chatIdPattern.test(id)) return
+  setHidden(false)
   const controller = new AbortController()
   chatRequest = controller
   clearNudge()
@@ -211,6 +228,7 @@ async function openSavedChat(id: string): Promise<void> {
 
 function showSavedChats(): void {
   if (!win || win.isDestroyed()) return
+  setHidden(false)
   clearNudge()
   chatListOpen = true
   chatPane = null
@@ -241,6 +259,7 @@ function dismiss(): void {
   chatListOpen = false
   if (win && !win.isDestroyed()) {
     win.setFocusable(false)
+    win.setIgnoreMouseEvents(true, { forward: true })
     win.webContents.send('dismiss')
   }
 }
@@ -281,7 +300,10 @@ ipcMain.on('mouse', (event, overUi: boolean) => {
 ipcMain.on('focus', (event, focus: boolean) => {
   if (!fromOverlay(event) || setupContents()) return
   win.setFocusable(Boolean(focus))
-  if (focus) win.focus()
+  if (focus) {
+    overlayFocusAt = Date.now()
+    win.focus()
+  }
 })
 ipcMain.on('chat-pane', (event, rect: ViewportRect | null) => {
   if (!fromOverlay(event)) return
@@ -298,12 +320,18 @@ ipcMain.on('chat-pane', (event, rect: ViewportRect | null) => {
 // ---------- menu-bar / tray ----------
 let tray: Tray | null = null
 
+const visibilityItem = (): MenuItemConstructorOptions => ({
+  label: hidden ? 'Show Ojos' : 'Hide Ojos', click: () => setHidden(!hidden)
+})
+
 function refreshTray(): void {
   if (!tray) return
-  tray.setToolTip(paused ? 'Ojos (paused)' : 'Ojos')
+  tray.setToolTip(hidden ? 'Ojos (hidden)' : paused ? 'Ojos (recording stopped)' : 'Ojos')
+  const recording = capture?.isRecording()
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: paused ? 'Ojos is paused' : 'Ojos is watching for confusion', enabled: false },
+      { label: hidden ? (recording ? 'Hidden · Recording continues' : 'Hidden · Recording stopped') :
+        paused ? 'Recording stopped' : 'Ojos is watching for confusion', enabled: false },
       { type: 'separator' },
       { label: 'Help me with this now', accelerator: 'CommandOrControl+Shift+O', click: () => void nudge() },
       { label: 'Saved chats', click: showSavedChats },
@@ -311,23 +339,27 @@ function refreshTray(): void {
         const id = storeGet('chat.lastId')
         if (id) void openSavedChat(id)
       } },
-      {
-        label: paused ? 'Resume' : 'Pause',
+      visibilityItem(),
+      ...(paused && setupDone() && !configuringSetup() ? [{
+        label: 'Resume recording',
         click: () => {
-          paused = !paused
-          if (paused) {
-            dismiss()
-            capture?.stop()
-          } else void startRecording()
-          refreshTray()
+          paused = false
+          void startRecording().finally(refreshTray)
         }
-      },
+      }] : []),
+      { label: 'Settings…', click: openSettings },
       { label: 'Recalibrate eyes…', click: () => runSetup('calibrate') },
       { label: 'Run setup again…', click: () => runSetup('welcome') },
       { type: 'separator' },
       { label: 'Quit Ojos', accelerator: 'CommandOrControl+Shift+Q', click: () => app.quit() }
     ])
   )
+  app.dock?.setMenu(Menu.buildFromTemplate([
+    { label: 'Settings…', click: openSettings },
+    { label: 'Saved chats', click: showSavedChats },
+    { label: 'Help me with this now', click: () => void nudge() },
+    visibilityItem()
+  ]))
 }
 
 function createTray(): void {
@@ -337,8 +369,37 @@ function createTray(): void {
   refreshTray()
 }
 
+let setupAfterSettings: 'calibrate' | 'welcome' | null = null
+
+function openSettings(): void {
+  if (setupContents()) {
+    openSetup({ startAt: 'settings', onDone: () => {} })
+    return
+  }
+  clearNudge()
+  chatPane = null
+  win.webContents.send('suggestions-dismissed')
+  win.setFocusable(false)
+  win.setIgnoreMouseEvents(true, { forward: true })
+  win.hide()
+  openSetup({
+    startAt: 'settings',
+    onDone: () => {
+      if (!hidden && !win.isDestroyed()) win.showInactive()
+      const next = setupAfterSettings
+      setupAfterSettings = null
+      if (next) runSetup(next)
+    }
+  })
+}
+
 /** Show the setup window; the overlay is (re)created on the chosen display when it closes. */
 function runSetup(startAt: string): void {
+  if (settingsContents() && (startAt === 'calibrate' || startAt === 'welcome')) {
+    setupAfterSettings = startAt
+    closeSettings()
+    return
+  }
   const existing = setupContents()
   if (existing) {
     const window = BrowserWindow.fromWebContents(existing)
@@ -358,6 +419,7 @@ function runSetup(startAt: string): void {
       if (win && !win.isDestroyed() && String(selectedDisplay().id) !== String(display.id)) {
         win.destroy()
         createOverlay()
+        if (hidden) win.hide()
         win.webContents.once('did-finish-load', () => win.webContents.send('ready', `${modeLabel()}|${modKey()}`))
       }
       if (completed) void startRecording()
@@ -373,9 +435,43 @@ const modeLabel = (): string => 'Live clip analysis and ADK chat'
 
 registerSetupIpc()
 
+ipcMain.on('open-settings', (event) => { if (fromOverlay(event)) openSettings() })
+function requireSettings(event: Electron.IpcMainInvokeEvent): void {
+  const contents = settingsContents()
+  if (!contents || event.senderFrame !== contents.mainFrame) {
+    throw new Error('Open Ojos Settings first.')
+  }
+}
+ipcMain.handle('settings:get', (event): AppSettings => {
+  requireSettings(event)
+  const status = capture?.status() ?? { recording: false, camera: false, calibration: null, confusion: 'stopped' }
+  const key = Boolean(process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim())
+  const remote = Boolean(process.env.OJOS_ASSISTANT_URL && process.env.OJOS_LOCAL_TOKEN)
+  return {
+    ...status, sensitivity: triggerHigh(), screenPermission: permission('screen'),
+    clipAssistant: process.env.OJOS_ASSISTANT_URL ? (remote ? 'remote' : 'unconfigured') : key ? 'local' : 'unconfigured',
+    chatConfigured: key
+  }
+})
+ipcMain.handle('settings:sensitivity', (event, value: number) => {
+  requireSettings(event)
+  if (!Number.isFinite(value)) throw new Error('Choose a valid sensitivity.')
+  const high = clampTriggerHigh(value)
+  if (high !== triggerHigh()) storeSet('trigger.high', String(high))
+})
+ipcMain.handle('settings:close', (event) => {
+  requireSettings(event)
+  closeSettings()
+})
+ipcMain.handle('settings:setup', (event, view: string) => {
+  requireSettings(event)
+  if (view !== 'calibrate' && view !== 'welcome') throw new Error('Unknown setup action.')
+  runSetup(view)
+})
+
 async function startRecording(): Promise<void> {
   const target = configuredDisplay()
-  if (!setupDone() || setupContents() || !target) {
+  if (!setupDone() || configuringSetup() || !target) {
     paused = true
     refreshTray()
     return
@@ -383,8 +479,9 @@ async function startRecording(): Promise<void> {
   try {
     if (!capture) throw new Error('This platform does not have a recording adapter.')
     if (!capture.isRecording()) await capture.start(target, 'record')
+    refreshTray()
   } catch (error) {
-    if (setupContents()) return
+    if (configuringSetup()) return
     paused = true
     refreshTray()
     console.warn('Recording did not start:', (error as Error).message)
@@ -393,7 +490,9 @@ async function startRecording(): Promise<void> {
 
 ipcMain.handle('setup:prepare-calibration', async (event) => {
   const target = calibrationDisplay()
-  if (event.sender !== setupContents() || !target || !capture) throw new Error('Live calibration is unavailable.')
+  if (!configuringSetup() || event.sender !== setupContents() || !target || !capture) {
+    throw new Error('Live calibration is unavailable.')
+  }
   return capture.start(target, 'calibrate')
 })
 ipcMain.handle('setup:calibration-clock', (event) => {
@@ -411,8 +510,34 @@ app.on('window-all-closed', () => {
   /* stay alive in the menu bar */
 })
 
+function openLauncherAction(args: string[]): void {
+  if (!win || win.isDestroyed()) return
+  if (args.includes('--setup')) runSetup('welcome')
+  else if (args.includes('--saved-chats')) showSavedChats()
+  else openSettings()
+}
+
+app.on('second-instance', (_event, args) => openLauncherAction(args))
+app.on('activate', () => {
+  if (process.platform !== 'darwin') return
+  setImmediate(() => {
+    const focused = BrowserWindow.getFocusedWindow()
+    if (!win || win.isDestroyed() || Date.now() - overlayFocusAt < 500 || (focused && focused !== win)) return
+    openSettings()
+  })
+})
+
 app.whenReady().then(() => {
-  if (process.platform === 'darwin') app.dock?.hide()
+  if (process.platform === 'darwin') {
+    app.dock?.setIcon(nativeImage.createFromPath(join(app.getAppPath(), 'resources', 'icon.png')))
+  } else if (process.platform === 'win32' && app.isPackaged) {
+    app.setAppUserModelId('com.ojos.desktop')
+    const options = { program: process.execPath, iconPath: process.execPath, iconIndex: 0 }
+    if (!app.setUserTasks([
+      { ...options, arguments: '--settings', title: 'Settings', description: 'Open Ojos Settings.' },
+      { ...options, arguments: '--saved-chats', title: 'Saved chats', description: 'Resume an Ojos conversation.' }
+    ])) console.warn('Windows did not register the Ojos taskbar actions.')
+  }
   createOverlay()
   createTray()
   try {
@@ -420,7 +545,7 @@ app.whenReady().then(() => {
       (interval) => void nudge(interval),
       (observation) => setupContents()?.send('setup:gaze', observation),
       (reason) => {
-        if (!setupContents()) {
+        if (!configuringSetup()) {
           paused = true
           dismiss()
           refreshTray()
@@ -442,7 +567,7 @@ app.whenReady().then(() => {
     capture?.stop('Computer suspended.')
   })
   powerMonitor.on('resume', () => {
-    if (resumeAfterSleep && !setupContents()) {
+    if (resumeAfterSleep && !configuringSetup()) {
       paused = false
       void startRecording()
       refreshTray()
@@ -480,7 +605,10 @@ app.whenReady().then(() => {
   console.log(`  ${mod}+Shift+O = ask about the last 20 seconds`)
   console.log(`  ${mac ? 'Option' : 'Alt'}+1/2/3 = pick a suggested question`)
   console.log(`  ${mod}+Shift+X = dismiss    ${mod}+Shift+Q = quit`)
-  win.webContents.once('did-finish-load', () => win.webContents.send('ready', `${mode}|${mod}`))
+  win.webContents.once('did-finish-load', () => {
+    win.webContents.send('ready', `${mode}|${mod}`)
+    if (process.argv.includes('--settings') || process.argv.includes('--saved-chats')) openLauncherAction(process.argv)
+  })
 
 })
 

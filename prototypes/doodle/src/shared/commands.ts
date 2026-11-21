@@ -63,7 +63,7 @@ export interface OjosApi {
   on(channel: 'chat-history', fn: (history: ChatHistory) => void): () => void
   on(channel: 'chat-meta', fn: (chat: SavedChat) => void): () => void
   on(channel: 'error' | 'ready' | 'chat-list-error', fn: (msg: string) => void): () => void
-  on(channel: 'done' | 'dismiss' | 'chat' | 'chat-help' | 'chat-list', fn: () => void): () => void
+  on(channel: 'done' | 'dismiss' | 'chat' | 'chat-help' | 'chat-list' | 'suggestions-dismissed', fn: () => void): () => void
   dismiss(): void
   /** User wants help: a picked suggestion, or no question for "explain this". */
   accept(question?: string): void
@@ -80,4 +80,5 @@ export interface OjosApi {
   openSavedChat(id: string): void
   newChat(): void
   olderChatTurns(before: number): Promise<ChatHistory>
+  openSettings(): void
 }

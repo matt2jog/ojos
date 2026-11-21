@@ -14,6 +14,10 @@ The overlay is transparent and always on top. Only the companion and its control
 
 First-run setup handles permissions, display selection, and optional gaze calibration. It uses the same capture geometry and local tracker observations as the recording session. From the tray, use **Run setup again…** or **Recalibrate eyes…** to repeat setup.
 
+Settings shows capture and assistant configuration, opens the existing calibration flow, and changes confusion sensitivity from 0.65 to 0.95. The default remains 0.80. Moving the slider applies the threshold to subsequent camera frames and clears any unfinished confusion interval. Screen and audio keep buffering throughout the change.
+
+While the overlay is hidden, recording continues in the local buffer. Ojos skips automatic suggestions and clip analysis. A manual help request or opening saved chats brings the overlay back.
+
 | Shortcut | Action |
 | --- | --- |
 | Cmd/Ctrl+Shift+O | Ask about the last 20 seconds |

@@ -27,7 +27,7 @@ def load_pipeline(args):
         runtime = ConfusionRuntime(args.artifact, args.artifact / "face_detection_yunet_2023mar.onnx",
                                    args.session_id, capture_epoch=args.capture_epoch,
                                    source=args.source, policy=policy)
-        return runtime.metadata["model_version"], runtime.process_sample
+        return runtime.metadata["model_version"], runtime.process_sample, runtime.interval.set_high
 
     sys.path.insert(0, str(MODELS / "eye-tracking/experiments/eth-xgaze"))
     import torch
@@ -46,14 +46,14 @@ def load_pipeline(args):
         result = runtime.step(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), None, ZERO_DISTORTION, time_us)
         return {"plane": result.get("plane"), "reason": result.get("reason"), "stage_ms": result["stage_ms"]}
 
-    return ETH_ID, estimate
+    return ETH_ID, estimate, None
 
 
 def emit(**record):
     print(json.dumps(record, allow_nan=False, separators=(",", ":")), flush=True)
 
 
-def serve(infer):
+def serve(infer, set_high=None):
     last_time = last_frame = -1
     source = sys.stdin.buffer
     while line := source.readline(MAX_FRAME_LINE + 1):
@@ -75,6 +75,11 @@ def serve(infer):
             frame = cv2.imdecode(np.frombuffer(encoded, dtype=np.uint8), cv2.IMREAD_COLOR)
             if frame is None:
                 raise ValueError("Invalid camera JPEG")
+            if "trigger_high" in request:
+                high = request["trigger_high"]
+                if set_high is None or type(high) not in (int, float) or not 0.65 <= high <= 0.95:
+                    raise ValueError("Trigger threshold must be between 0.65 and 0.95 on the confusion worker")
+                set_high(high)
         except (ValueError, TypeError, KeyError, AttributeError, cv2.error) as error:
             emit(type="frame.error", id=request_id, error=str(error))
             continue
@@ -96,9 +101,9 @@ def main():
     args = parser.parse_args()
     if args.capture_epoch < 0 or not 0 < args.hfov < 180:
         parser.error("Capture epoch and camera field of view are invalid")
-    version, infer = load_pipeline(args)
+    version, infer, set_high = load_pipeline(args)
     emit(type="ready", worker=args.worker, model_version=version)
-    serve(infer)
+    serve(infer, set_high)
 
 
 if __name__ == "__main__":

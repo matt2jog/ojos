@@ -21,7 +21,8 @@ const api: OjosApi = {
   listChats: () => ipcRenderer.invoke('chat-list'),
   openSavedChat: (id) => ipcRenderer.send('open-chat', id),
   newChat: () => ipcRenderer.send('new-chat'),
-  olderChatTurns: (before) => ipcRenderer.invoke('chat-older', before)
+  olderChatTurns: (before) => ipcRenderer.invoke('chat-older', before),
+  openSettings: () => ipcRenderer.send('open-settings')
 }
 
 const setup: SetupApi = {
@@ -33,6 +34,10 @@ const setup: SetupApi = {
   selectDisplay: (id) => ipcRenderer.invoke('setup:select-display', id),
   fullscreen: (id) => ipcRenderer.invoke('setup:fullscreen', id),
   finish: () => ipcRenderer.invoke('setup:finish'),
+  settings: () => ipcRenderer.invoke('settings:get'),
+  setSensitivity: (high) => ipcRenderer.invoke('settings:sensitivity', high),
+  closeSettings: () => ipcRenderer.invoke('settings:close'),
+  settingsSetup: (view) => ipcRenderer.invoke('settings:setup', view),
   prepareCalibration: () => ipcRenderer.invoke('setup:prepare-calibration'),
   onCalibrationProgress(fn) {
     const handler = (_e: IpcRendererEvent, stage: Parameters<typeof fn>[0]): void => fn(stage)

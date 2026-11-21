@@ -51,7 +51,9 @@ await build({
         'models/eye-tracking/experiments/eth-xgaze/bench.py'
       ] }
     ],
+    win: { icon: join(app, 'resources', 'icon.png') },
     mac: {
+      icon: join(app, 'resources', 'icon.icns'),
       minimumSystemVersion: '14.2',
       extendInfo: {
         NSCameraUsageDescription: 'Ojos uses the camera on this Mac to estimate gaze and detect when help may be useful.',

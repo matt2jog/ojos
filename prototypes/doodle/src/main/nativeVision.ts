@@ -52,7 +52,7 @@ export function launchNativeVision(lane: NativeLane, spec: Pick<CaptureSpec, 'se
   })
   return {
     ready: ready.promise,
-    async frame(request: Request): Promise<unknown> {
+    async frame(request: Request, triggerHigh?: number): Promise<unknown> {
       await ready.promise
       if (closed) throw new Error(`${model} is closed.`)
       if (pending || request.jpeg.byteLength > 2_000_000) throw new Error(`Invalid ${model} frame request.`)
@@ -60,7 +60,8 @@ export function launchNativeVision(lane: NativeLane, spec: Pick<CaptureSpec, 'se
         const timer = setTimeout(() => fail(new Error(`${model} inference timed out.`)), 4000)
         pending = { request, resolve, reject, timer }
         child.stdin.write(JSON.stringify({ type: 'frame', id: request.frameId, frame_id: request.frameId,
-          time_us: request.timeUs, jpeg_base64: Buffer.from(request.jpeg).toString('base64') }) + '\n')
+          time_us: request.timeUs, trigger_high: triggerHigh,
+          jpeg_base64: Buffer.from(request.jpeg).toString('base64') }) + '\n')
       })
     },
     close(): void { fail(new Error(`${model} stopped.`)) }

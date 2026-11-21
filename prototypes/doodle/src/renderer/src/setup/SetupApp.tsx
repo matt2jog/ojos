@@ -4,8 +4,9 @@ import type { CalibrationStage } from '../../../shared/capture'
 import type { DisplayInfo, PermissionKind, PermissionState } from '../../../shared/setup'
 import { Logo } from '../components/Logo'
 import { Calibration, type CalibrationOutcome } from './Calibration'
+import { Settings } from './Settings'
 
-type Step = 'welcome' | 'permissions' | 'display' | 'prepare' | 'calibrate' | 'fallback' | 'done'
+type Step = 'welcome' | 'permissions' | 'display' | 'prepare' | 'calibrate' | 'fallback' | 'done' | 'settings'
 const ORDER: Step[] = ['welcome', 'permissions', 'display', 'calibrate', 'done']
 const TRACKERS: Tracker[] = ['model1', 'model2']
 const PREPARATION = {
@@ -56,7 +57,8 @@ function Progress({ step }: { step: Step }): React.JSX.Element {
 
 export function SetupApp(): React.JSX.Element {
   const hash = location.hash.replace('#', '')
-  const initial: Step = hash === 'calibrate' ? 'display' : ORDER.includes(hash as Step) ? (hash as Step) : 'welcome'
+  const initial: Step = hash === 'settings' ? 'settings' : hash === 'calibrate' ? 'display' :
+    ORDER.includes(hash as Step) ? (hash as Step) : 'welcome'
   const [step, setStep] = useState<Step>(initial)
   const [platform, setPlatform] = useState<string>('darwin')
   const [perms, setPerms] = useState<Record<PermissionKind, PermissionState> | null>(null)
@@ -210,9 +212,11 @@ export function SetupApp(): React.JSX.Element {
       {step !== 'calibrate' && (
         <header className="setup-head">
           <Logo />
-          <Progress step={step} />
+          {step !== 'settings' && <Progress step={step} />}
         </header>
       )}
+
+      {step === 'settings' && <Settings />}
 
       {step === 'welcome' && (
         <main className="setup-body center">

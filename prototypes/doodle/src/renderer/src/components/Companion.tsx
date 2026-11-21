@@ -505,6 +505,13 @@ export function Companion(props: Props): React.JSX.Element {
           </svg>
           <span className="ojo-nav-label" aria-hidden="true">Chat list</span>
         </button>
+        <button onClick={() => window.ojos.openSettings()} aria-label="Settings" title="Settings and eye calibration">
+          <svg viewBox="0 0 16 16" width="15" height="15">
+            <path d="M2.5 5h3.2M9.3 5h4.2M2.5 11h6.2M12.3 11h1.2" />
+            <circle cx="7.5" cy="5" r="1.8" />
+            <circle cx="10.5" cy="11" r="1.8" />
+          </svg>
+        </button>
         <button onClick={onDismiss} aria-label="Close" title="Close">
           <svg viewBox="0 0 16 16" width="15" height="15">
             <path d="M4 4l8 8M12 4l-8 8" />

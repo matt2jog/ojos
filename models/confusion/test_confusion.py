@@ -65,6 +65,22 @@ class IntervalTests(unittest.TestCase):
             self.assertIsNone(detector.step((100 + frame) * STEP, frame, 0.0))
         self.assertEqual(detector.published_us, 12_000_000)
 
+    def test_live_threshold_change_discards_old_candidate_and_keeps_cooldown(self):
+        detector = Intervals(SESSION, "test", "live")
+        self.assertFalse(self.run_scores(detector, 0, 45, 0.85))
+        self.assertIsNotNone(detector.active)
+        detector.set_high(0.95)
+        self.assertIsNone(detector.active)
+        self.assertEqual(detector.smoothed, 0.85)
+        self.assertFalse(self.run_scores(detector, 45, 130, 0.85))
+        detector.set_high(0.65)
+        event, = self.run_scores(detector, 130, 200, 0.85)
+        self.assertEqual(event["start_us"], 130 * STEP)
+        self.assertEqual(event["capture_epoch"], 0)
+        detector.set_high(0.80)
+        self.assertIsNotNone(detector.published_us)
+        self.assertFalse(self.run_scores(detector, 200, 300, 0.85))
+
     def test_sampler_uses_a_distinct_frame_and_counts_unserved_ticks(self):
         sampler = Sampler(8)
         self.assertEqual([sampler.take(t) for t in (0, 0, 25_000, 140_000, 490_000, 500_000)],

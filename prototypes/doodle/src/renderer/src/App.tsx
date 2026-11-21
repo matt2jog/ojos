@@ -172,6 +172,12 @@ export function App(): React.JSX.Element {
         armNudgeTimeout(15000)
       }),
       window.ojos.on('suggest', (sug) => setQuestions(sug.questions)),
+      window.ojos.on('suggestions-dismissed', () => {
+        clearNudgeTimer()
+        setForkOffer(false)
+        setQuestions(null)
+        if (modeRef.current === 'nudge') setMode('hidden')
+      }),
       window.ojos.on('chat', openChat),
       window.ojos.on('chat-list', openLibrary),
       window.ojos.on('chat-list-error', (text) => {

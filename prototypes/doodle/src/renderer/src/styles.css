@@ -299,10 +299,10 @@ body {
   background: rgba(255, 255, 255, 0.12);
   color: #fff;
 }
-.ojo.to-left .ojo-bar:has(.active) {
+.ojo.to-left .ojo-bar {
   align-self: flex-end;
 }
-.ojo.to-right .ojo-bar:has(.active) {
+.ojo.to-right .ojo-bar {
   align-self: flex-start;
 }
 .ojo-bar button:has(.ojo-nav-label) {
@@ -330,7 +330,7 @@ body {
   transition: max-width 0.22s ease, margin 0.22s ease, opacity 0.16s ease;
 }
 .ojo-bar button.active .ojo-nav-label {
-  max-width: min(160px, calc(100vw - 120px));
+  max-width: min(160px, calc(100vw - 154px));
   margin-inline-start: 5px;
   opacity: 1;
 }

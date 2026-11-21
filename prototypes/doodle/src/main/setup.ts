@@ -3,7 +3,7 @@
 import { app, BrowserWindow, desktopCapturer, ipcMain, screen, shell, systemPreferences, type Display } from 'electron'
 import { join } from 'path'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
-import type { DisplayInfo, PermissionKind, PermissionState } from '../shared/setup'
+import { clampTriggerHigh, TRIGGER_RANGE, type DisplayInfo, type PermissionKind, type PermissionState } from '../shared/setup'
 import { encodedSize } from '../shared/capture'
 
 // ---------- local store (settings + calibration profiles; never leaves the laptop) ----------
@@ -33,6 +33,10 @@ export function storeSet(key: string, value: string | null): void {
 }
 
 export const setupDone = (): boolean => storeGet('setup.done') === '1'
+export function triggerHigh(): number {
+  const value = Number(storeGet('trigger.high') ?? TRIGGER_RANGE.default)
+  return Number.isFinite(value) ? clampTriggerHigh(value) : TRIGGER_RANGE.default
+}
 
 // ---------- displays ----------
 export function configuredDisplay(): Display | undefined {
@@ -67,7 +71,7 @@ export function displayInfo(d: Display): DisplayInfo {
 // ---------- permissions ----------
 const mac = process.platform === 'darwin'
 
-function permission(kind: PermissionKind): PermissionState {
+export function permission(kind: PermissionKind): PermissionState {
   if (kind === 'audio') return mac ? permission('screen') : 'granted' // playback audio rides on screen capture
   if (kind === 'screen' && !mac) return 'granted' // Windows has no screen-capture permission
   try {
@@ -87,6 +91,7 @@ const SETTINGS_URL: Record<'camera' | 'screen', string> = mac
 
 // ---------- window ----------
 let setupWin: BrowserWindow | null = null
+let settingsView = false
 
 export function openSetup(opts: { onDone(completed: boolean): void; startAt?: string }): BrowserWindow | null {
   if (setupWin && !setupWin.isDestroyed()) {
@@ -94,13 +99,14 @@ export function openSetup(opts: { onDone(completed: boolean): void; startAt?: st
     setupWin.focus()
     return setupWin
   }
+  settingsView = opts.startAt === 'settings'
   setupWin = new BrowserWindow({
     width: 880,
     height: 620,
     minWidth: 720,
     minHeight: 560,
     show: false,
-    title: 'Ojos setup',
+    title: settingsView ? 'Ojos Settings' : 'Ojos setup',
     backgroundColor: '#0e0f12',
     titleBarStyle: mac ? 'hiddenInset' : 'default',
     autoHideMenuBar: true,
@@ -117,6 +123,7 @@ export function openSetup(opts: { onDone(completed: boolean): void; startAt?: st
   })
   setupWin.on('closed', () => {
     setupWin = null
+    settingsView = false
     opts.onDone(completed)
   })
   return setupWin
@@ -124,6 +131,11 @@ export function openSetup(opts: { onDone(completed: boolean): void; startAt?: st
 
 let completed = false
 export const setupContents = () => setupWin?.webContents
+export const settingsContents = () => settingsView ? setupContents() : undefined
+export const configuringSetup = () => Boolean(setupWin) && !settingsView
+export function closeSettings(): void {
+  if (settingsView) setupWin?.close()
+}
 
 let restoreBounds: Electron.Rectangle | null = null
 
@@ -186,14 +198,18 @@ export function registerSetupIpc(): void {
     selected: String((calibrationDisplay() ?? selectedDisplay()).id)
   }))
   ipcMain.handle('setup:select-display', (event, id: string) => {
-    if (event.sender !== setupContents() || !screen.getAllDisplays().some((d) => String(d.id) === id)) {
+    if (!configuringSetup() || event.sender !== setupContents() || !screen.getAllDisplays().some((d) => String(d.id) === id)) {
       throw new Error('Select an available display.')
     }
     setupDisplayId = id
   })
-  ipcMain.handle('setup:fullscreen', (_e, displayId: string | null) => setFullscreenOn(displayId))
+  ipcMain.handle('setup:fullscreen', (event, displayId: string | null) => {
+    if (configuringSetup() && event.sender === setupContents()) setFullscreenOn(displayId)
+  })
   ipcMain.handle('setup:finish', (event) => {
-    if (event.sender !== setupContents() || !calibrationDisplay()) throw new Error('Select an available display first.')
+    if (!configuringSetup() || event.sender !== setupContents() || !calibrationDisplay()) {
+      throw new Error('Select an available display first.')
+    }
     storeSet('display.id', setupDisplayId)
     storeSet('setup.done', '1')
     completed = true

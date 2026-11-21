@@ -11,8 +11,9 @@ import type { CalibrationGeometry } from '@vision/calibration.mjs'
 import { paneGazeIoU } from '../../shared/gazeGeometry'
 import type { ViewportRect } from '../../shared/capture'
 import type { AudioBlock, CalibrationReady, CalibrationStage, CameraGeometry, CaptureSpec, Frame, Interval, NativeLane, Observation, VisionExport } from '../../shared/capture'
+import type { CaptureStatus } from '../../shared/setup'
 import { launchNativeVision } from '../nativeVision'
-import { displayInfo, storeGet, storeSet } from '../setup'
+import { displayInfo, storeGet, storeSet, triggerHigh } from '../setup'
 import { recordingPlatform } from './platform'
 
 const nowUs = (): number => Math.round(performance.now() * 1000)
@@ -28,11 +29,12 @@ type Run = {
   display: Display
   recorder: InstanceType<typeof Recorder>
   workers: Map<NativeLane, ReturnType<typeof launchNativeVision>>
+  confusionReady: boolean
   abort: AbortController
   warnings: Set<string>
   lastFrameAt: number
   lastAudioAt: number
-  hasCamera: boolean
+  camera: CameraGeometry | null
 }
 
 export class RecordingService {
@@ -123,11 +125,12 @@ export class RecordingService {
       const worker = warmed ?? launchNativeVision(lane, active.spec)
       active.workers.set(lane, worker)
       await worker.ready
+      if (lane === 'confusion') active.confusionReady = true
     })
     ipcMain.handle('capture:native-frame', (event, lane: NativeLane, frame) => {
       const worker = owner(event)?.workers.get(lane)
       if (!worker) throw new Error('Vision worker is closed.')
-      return worker.frame(frame)
+      return worker.frame(frame, lane === 'confusion' ? triggerHigh() : undefined)
     })
     ipcMain.on('capture:interval', (event, interval: Interval) => {
       const active = owner(event)
@@ -154,7 +157,7 @@ export class RecordingService {
     this.#monitor = setInterval(() => {
       const active = this.#active
       if (!active) return
-      if (active.hasCamera && this.#platform.cameraRevoked()) this.stop('Camera permission was revoked.')
+      if (active.camera && this.#platform.cameraRevoked()) this.stop('Camera permission was revoked.')
       if (active.spec.mode !== 'record') return
       const now = nowUs()
       if (!this.#platform.screenAllowed()) this.stop('Screen recording permission was revoked.')
@@ -177,6 +180,24 @@ export class RecordingService {
   isCalibrating(): boolean { return this.#active?.spec.mode === 'calibrate' }
   clock(): number { return nowUs() - (this.#active?.spec.startUs ?? nowUs()) }
   usesDisplay(id: number): boolean { return this.#active?.display.id === id }
+
+  status(): CaptureStatus {
+    const active = this.#active
+    if (active?.spec.mode !== 'record') {
+      return { recording: false, camera: false, calibration: null, confusion: 'stopped' }
+    }
+    let calibration: boolean | null = null
+    if (active.camera) {
+      const geometry = { ...active.camera, ...active.spec }
+      const storage = { getItem: storeGet, setItem: storeSet }
+      calibration = (['model1', 'model2'] as const).some((tracker) => loadTrackerProfile(storage, tracker, geometry))
+    }
+    const unavailable = ['confusion', 'camera', 'vision'].some((lane) => active.warnings.has(lane))
+    return {
+      recording: true, camera: Boolean(active.camera), calibration,
+      confusion: unavailable ? 'unavailable' : active.confusionReady ? 'running' : 'starting'
+    }
+  }
 
   prewarmCalibration(): void {
     if (this.#warmGaze) return
@@ -218,7 +239,7 @@ export class RecordingService {
       }
     })
     const active: Run = { win, spec, display, recorder, workers: new Map(), abort: new AbortController(),
-      warnings: new Set(), lastFrameAt: spec.startUs, lastAudioAt: 0, hasCamera: false }
+      warnings: new Set(), lastFrameAt: spec.startUs, lastAudioAt: 0, camera: null, confusionReady: false }
     this.#active = active
     win.webContents.on('will-navigate', (event) => event.preventDefault())
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
@@ -230,7 +251,7 @@ export class RecordingService {
       await win.loadURL(dev ? new URL('capture.html', dev).href : `${scheme}://local/capture.html`)
       const geometry: CameraGeometry | CalibrationReady | null = await win.webContents.executeJavaScript(`window.startCapture(${JSON.stringify(spec)})`, true)
       if (this.#active !== active) throw new Error('Capture was interrupted.')
-      active.hasCamera = Boolean(geometry)
+      active.camera = geometry
       if (mode === 'record' && !spec.loopback) this.#warn(active, 'audio', 'This macOS version is running screen-only capture.')
       return geometry
     } catch (error) {
