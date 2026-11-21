@@ -5,7 +5,7 @@ import { mkdir } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
-import type { DrawCmd } from '../shared/commands'
+import type { ChatHistory, DrawCmd, SavedChat } from '../shared/commands'
 import { project, python } from './runtime'
 
 let child: ChildProcess | undefined
@@ -112,10 +112,11 @@ const TOOL_LABELS: Record<string, string> = {
   web_search: 'Searching the web',
   read_url: 'Reading a web page',
   remember: 'Saving a note',
-  recall: 'Looking up a note'
+  recall: 'Looking up a note',
+  run_subagent: 'Asking a Gemini helper'
 }
 
-export async function streamChatTurn(opts: ChatRequest, onEvent: (event: ChatEvent) => void): Promise<string> {
+export async function streamChatTurn(opts: ChatRequest, onEvent: (event: ChatEvent) => void): Promise<{ text: string; chat: SavedChat }> {
   const { baseUrl, token } = await localAssistant()
   const response = await fetch(new URL(`/v1/chats/${opts.chatId}/messages`, baseUrl), {
     method: 'POST',
@@ -145,7 +146,7 @@ export async function streamChatTurn(opts: ChatRequest, onEvent: (event: ChatEve
         if (!raw) continue
         const data = JSON.parse(raw)
         if (name === 'turn.error') throw new Error(data.message)
-        if (name === 'turn.done' && typeof data.text === 'string') return data.text
+        if (name === 'turn.done' && typeof data.text === 'string') return data
         if (name === 'turn.delta' && typeof data.text === 'string') onEvent({ kind: 'delta', text: data.text })
         if (name === 'turn.doodle' && data.draw) onEvent({ kind: 'doodle', command: data })
         if (name === 'turn.status') {
@@ -159,12 +160,20 @@ export async function streamChatTurn(opts: ChatRequest, onEvent: (event: ChatEve
   }
 }
 
-export async function chatHistory(chatId: string, signal: AbortSignal): Promise<Array<{ question: string; answer: string }>> {
+async function localChatGet(route: string, signal: AbortSignal) {
   const { baseUrl, token } = await localAssistant()
-  const response = await fetch(new URL(`/v1/chats/${chatId}/history`, baseUrl), {
+  const response = await fetch(new URL(route, baseUrl), {
     headers: { Authorization: `Bearer ${token}` }, signal
   })
-  if (!response.ok) throw new Error('The saved chat could not be opened.')
-  const data = await response.json()
-  return data.turns
+  if (!response.ok) throw new Error('Could not load saved chats.')
+  return response.json()
+}
+
+export async function chatHistory(chatId: string, signal: AbortSignal, before?: number): Promise<ChatHistory> {
+  const query = before === undefined ? '' : `?before_seq=${before}`
+  return localChatGet(`/v1/chats/${chatId}/history${query}`, signal)
+}
+
+export async function savedChats(signal: AbortSignal): Promise<SavedChat[]> {
+  return (await localChatGet('/v1/chats', signal)).chats
 }

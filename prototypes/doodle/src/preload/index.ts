@@ -16,7 +16,12 @@ const api: OjosApi = {
   nudgeHidden: () => ipcRenderer.send('nudge-hidden'),
   setOverPanel: (over) => ipcRenderer.send('mouse', over),
   setFocus: (on) => ipcRenderer.send('focus', on),
-  setChatPane: (rect) => ipcRenderer.send('chat-pane', rect)
+  setChatPane: (rect) => ipcRenderer.send('chat-pane', rect),
+  setChatListOpen: (open) => ipcRenderer.send('chat-list-mode', open),
+  listChats: () => ipcRenderer.invoke('chat-list'),
+  openSavedChat: (id) => ipcRenderer.send('open-chat', id),
+  newChat: () => ipcRenderer.send('new-chat'),
+  olderChatTurns: (before) => ipcRenderer.invoke('chat-older', before)
 }
 
 const setup: SetupApi = {

@@ -3,11 +3,11 @@ import { join } from 'path'
 import { randomUUID } from 'node:crypto'
 import { readFile, rm } from 'node:fs/promises'
 import { analyzeBundle } from '@assistant'
-import type { Gaze } from '../shared/commands'
+import type { ChatHistory, Gaze } from '../shared/commands'
 import type { Interval, ViewportRect, VisionExport } from '../shared/capture'
 import { calibrationDisplay, configuredDisplay, openSetup, registerSetupIpc, selectedDisplay, setupContents, setupDone, storeGet, storeSet } from './setup'
 import { RecordingService } from './capture/service'
-import { assistant, chatHistory, stopAssistant, streamChatTurn } from './assistant'
+import { assistant, chatHistory, savedChats, stopAssistant, streamChatTurn } from './assistant'
 import { configureRuntime } from './runtime'
 
 if (process.env.OJOS_USER_DATA) app.setPath('userData', process.env.OJOS_USER_DATA)
@@ -28,6 +28,8 @@ let chatId: string | undefined
 let chatPane: ViewportRect | null = null
 let chatAnswered = false
 let chatHelpOffered = false
+let chatListOpen = false
+const chatIdPattern = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/
 const center: Gaze = { x: 500, y: 500 } // placement only, never sent as gaze evidence
 
 function createOverlay(): void {
@@ -73,12 +75,12 @@ let paused = false
 
 /** Confusion detected: show the mascot and start guessing the question. Never explains on its own. */
 async function nudge(interval?: Interval): Promise<void> {
-  if (paused || chatRequest || !capture?.isRecording()) return
+  if (paused || chatRequest || chatListOpen || (interval && pending) || !capture?.isRecording()) return
   if (interval && chatId && chatAnswered && chatPane) {
     const id = chatId
     const pane = chatPane
     const overlap = await capture.gazedAtPane(interval, pane, paneIoU)
-    if (paused || chatRequest || id !== chatId || pane !== chatPane) return
+    if (paused || chatRequest || chatListOpen || id !== chatId || pane !== chatPane) return
     if (overlap) {
       if (!chatHelpOffered) {
         chatHelpOffered = true
@@ -126,7 +128,8 @@ async function nudge(interval?: Interval): Promise<void> {
 
 /** Taking a fresh screen suggestion opens a chat. Typed follow-ups reuse its ID. */
 async function ask(question: string | undefined, picked = false): Promise<void> {
-  if (paused || chatRequest || (question !== undefined && typeof question !== 'string')) return
+  if (chatRequest || chatListOpen || (picked && !pending) ||
+      (question !== undefined && typeof question !== 'string')) return
   const message = question?.trim() || 'Explain what I’m looking at.'
   if (message.length > 8000) return
   const evidence = (!chatId || picked) && pending ? pending : undefined
@@ -159,7 +162,8 @@ async function ask(question: string | undefined, picked = false): Promise<void> 
       chatHelpOffered = false
       storeSet('chat.lastId', id)
       refreshTray()
-      win.webContents.send('chat-answer', answer)
+      win.webContents.send('chat-meta', answer.chat)
+      win.webContents.send('chat-answer', answer.text)
       win.webContents.send('done')
     }
   } catch (e) {
@@ -177,29 +181,53 @@ function clearNudge(): void {
   setPickKeys(false)
 }
 
-async function openLastChat(): Promise<void> {
-  const id = storeGet('chat.lastId')
-  if (paused || chatRequest || !id || !/^[a-f0-9-]{36}$/.test(id)) return
+async function openSavedChat(id: string): Promise<void> {
+  if (chatRequest || !chatIdPattern.test(id)) return
   const controller = new AbortController()
   chatRequest = controller
   clearNudge()
   try {
-    const turns = await chatHistory(id, AbortSignal.any([controller.signal, AbortSignal.timeout(25_000)]))
+    const history = await chatHistory(id, AbortSignal.any([controller.signal, AbortSignal.timeout(25_000)]))
     if (chatRequest !== controller || win.isDestroyed()) return
+    if (!history.chat) throw new Error('That saved chat could not be found.')
     chatId = id
-    chatAnswered = turns.length > 0
+    chatAnswered = history.turns.length > 0
     chatHelpOffered = false
     chatPane = null
-    win.webContents.send('chat-history', turns)
+    chatListOpen = false
+    storeSet('chat.lastId', id)
+    refreshTray()
+    win.webContents.send('chat-history', history)
     win.webContents.send('chat')
   } catch (error) {
     if (chatRequest === controller && !win.isDestroyed()) {
-      win.webContents.send('chat')
-      win.webContents.send('error', (error as Error).message)
+      showSavedChats()
+      win.webContents.send('chat-list-error', (error as Error).message)
     }
   } finally {
     if (chatRequest === controller) chatRequest = undefined
   }
+}
+
+function showSavedChats(): void {
+  if (!win || win.isDestroyed()) return
+  clearNudge()
+  chatListOpen = true
+  chatPane = null
+  win.webContents.send('chat-list')
+}
+
+function newChat(): void {
+  if (chatRequest) return
+  clearNudge()
+  chatId = undefined
+  chatAnswered = false
+  chatHelpOffered = false
+  chatPane = null
+  chatListOpen = false
+  const empty: ChatHistory = { chat: null, turns: [], older_before_seq: null }
+  win.webContents.send('chat-history', empty)
+  win.webContents.send('chat')
 }
 
 function dismiss(): void {
@@ -210,20 +238,43 @@ function dismiss(): void {
   chatAnswered = false
   chatHelpOffered = false
   chatPane = null
+  chatListOpen = false
   if (win && !win.isDestroyed()) {
     win.setFocusable(false)
     win.webContents.send('dismiss')
   }
 }
 
-const fromOverlay = (event: Electron.IpcMainEvent): boolean =>
+const fromOverlay = (event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): boolean =>
   Boolean(win && !win.isDestroyed() && event.senderFrame === win.webContents.mainFrame)
 ipcMain.on('dismiss', (event) => { if (fromOverlay(event)) dismiss() })
-ipcMain.on('accept', (event, question?: string) => { if (fromOverlay(event) && (pending || chatId)) void ask(question, true) })
+ipcMain.on('accept', (event, question?: string) => { if (fromOverlay(event) && pending) void ask(question, true) })
 ipcMain.on('ask', (event, message: string) => {
   if (fromOverlay(event) && typeof message === 'string' && message.trim()) void ask(message)
 })
 ipcMain.on('nudge-hidden', (event) => { if (fromOverlay(event)) clearNudge() })
+ipcMain.on('chat-list-mode', (event, open: boolean) => {
+  if (!fromOverlay(event)) return
+  chatListOpen = open === true
+  if (chatListOpen) {
+    clearNudge()
+    chatPane = null
+  }
+})
+ipcMain.handle('chat-list', (event) => {
+  if (!fromOverlay(event)) throw new Error('Unavailable chat list.')
+  return savedChats(AbortSignal.timeout(25_000))
+})
+ipcMain.on('open-chat', (event, id: string) => {
+  if (fromOverlay(event) && typeof id === 'string') void openSavedChat(id)
+})
+ipcMain.on('new-chat', (event) => { if (fromOverlay(event)) newChat() })
+ipcMain.handle('chat-older', (event, before: number) => {
+  if (!fromOverlay(event) || !chatId || !Number.isSafeInteger(before) || before < 1) {
+    throw new Error('No earlier messages are available.')
+  }
+  return chatHistory(chatId, AbortSignal.timeout(25_000), before)
+})
 ipcMain.on('mouse', (event, overUi: boolean) => {
   if (fromOverlay(event)) win.setIgnoreMouseEvents(!overUi, { forward: true })
 })
@@ -255,7 +306,11 @@ function refreshTray(): void {
       { label: paused ? 'Ojos is paused' : 'Ojos is watching for confusion', enabled: false },
       { type: 'separator' },
       { label: 'Help me with this now', accelerator: 'CommandOrControl+Shift+O', click: () => void nudge() },
-      { label: 'Open last chat', enabled: !paused && Boolean(storeGet('chat.lastId')), click: () => void openLastChat() },
+      { label: 'Saved chats', click: showSavedChats },
+      { label: 'Open last chat', enabled: Boolean(storeGet('chat.lastId')), click: () => {
+        const id = storeGet('chat.lastId')
+        if (id) void openSavedChat(id)
+      } },
       {
         label: paused ? 'Resume' : 'Pause',
         click: () => {

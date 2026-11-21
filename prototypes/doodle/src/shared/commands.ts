@@ -42,15 +42,28 @@ export interface ResetPayload {
   fresh: boolean
 }
 
+export interface SavedChat {
+  id: string
+  title: string
+  description: string
+}
+
+export interface ChatHistory {
+  chat: SavedChat | null
+  turns: Array<{ id: string; question: string; answer: string }>
+  older_before_seq: number | null
+}
+
 export interface OjosApi {
   on(channel: 'reset', fn: (p: ResetPayload) => void): () => void
   on(channel: 'nudge', fn: (gaze: Gaze) => void): () => void
   on(channel: 'suggest', fn: (s: Suggestions) => void): () => void
   on(channel: 'cmd', fn: (c: Cmd) => void): () => void
   on(channel: 'chat-status' | 'chat-delta' | 'chat-answer', fn: (text: string) => void): () => void
-  on(channel: 'chat-history', fn: (turns: Array<{ question: string; answer: string }>) => void): () => void
-  on(channel: 'error' | 'ready', fn: (msg: string) => void): () => void
-  on(channel: 'done' | 'dismiss' | 'chat' | 'chat-help', fn: () => void): () => void
+  on(channel: 'chat-history', fn: (history: ChatHistory) => void): () => void
+  on(channel: 'chat-meta', fn: (chat: SavedChat) => void): () => void
+  on(channel: 'error' | 'ready' | 'chat-list-error', fn: (msg: string) => void): () => void
+  on(channel: 'done' | 'dismiss' | 'chat' | 'chat-help' | 'chat-list', fn: () => void): () => void
   dismiss(): void
   /** User wants help: a picked suggestion, or no question for "explain this". */
   accept(question?: string): void
@@ -62,4 +75,9 @@ export interface OjosApi {
   /** The overlay normally never takes focus. Typing needs it, so the chat box asks for it. */
   setFocus(on: boolean): void
   setChatPane(rect: ViewportRect | null): void
+  setChatListOpen(open: boolean): void
+  listChats(): Promise<SavedChat[]>
+  openSavedChat(id: string): void
+  newChat(): void
+  olderChatTurns(before: number): Promise<ChatHistory>
 }

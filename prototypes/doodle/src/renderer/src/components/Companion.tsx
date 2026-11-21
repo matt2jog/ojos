@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { SavedChat } from '../../../shared/commands'
 
 export interface TurnView {
   /** What the user picked or typed. Empty for a generic "explain this". */
@@ -9,13 +10,20 @@ export interface TurnView {
 }
 
 interface Props {
-  /** nudge: mascot with a thought bubble. chat: mascot with the conversation. */
-  mode: 'hidden' | 'nudge' | 'chat'
+  mode: 'hidden' | 'nudge' | 'chat' | 'library'
   /** Suggested questions not asked yet. null while the fast model is still guessing. */
   questions: string[] | null
   thread: TurnView[]
   status: { kind: 'idle' | 'thinking' | 'error'; text?: string }
   busy: boolean
+  forkOffer: boolean
+  savedChats: SavedChat[] | null
+  libraryError: string | null
+  openingChat: string | null
+  activeChat: SavedChat | null
+  chatKey: number
+  olderBefore: number | null
+  loadingOlder: boolean
   offerSimpler: boolean
   mac: boolean
   /** Changes when the chat box should take the keyboard. */
@@ -23,6 +31,11 @@ interface Props {
   onPick(question?: string): void
   onAsk(text: string): void
   onOpenChat(): void
+  onKeepChat(): void
+  onOpenLibrary(): void
+  onOpenSavedChat(id: string): void
+  onNewChat(): void
+  onLoadEarlier(): void
   onDismiss(): void
   onSimplify(): void
   onHover(over: boolean): void
@@ -55,7 +68,7 @@ interface ThoughtItem {
 }
 
 /** One suggestion at a time. It moves on by itself, and the dots jump to a specific one. */
-function Thought({ items, compact }: { items: ThoughtItem[]; compact?: boolean }): React.JSX.Element | null {
+function Thought({ items }: { items: ThoughtItem[] }): React.JSX.Element | null {
   const [i, setI] = useState(0)
   const [hold, setHold] = useState(false)
   const n = items.length
@@ -73,7 +86,7 @@ function Thought({ items, compact }: { items: ThoughtItem[]; compact?: boolean }
   const item = items[at]
   return (
     <div
-      className={`thought ${compact ? 'compact' : ''}`}
+      className="thought"
       onMouseEnter={() => setHold(true)}
       onMouseLeave={() => setHold(false)}
     >
@@ -106,9 +119,9 @@ function Thought({ items, compact }: { items: ThoughtItem[]; compact?: boolean }
  * Drag it by the face to move it. Pupils follow the pointer (gaze later).
  */
 export function Companion(props: Props): React.JSX.Element {
-  const { mode, questions, thread, status, busy, offerSimpler, mac, focusSignal, onPick, onAsk,
-    onOpenChat, onDismiss, onSimplify, onHover } =
-    props
+  const { mode, questions, thread, status, busy, offerSimpler, forkOffer, savedChats, libraryError, openingChat,
+    activeChat, chatKey, olderBefore, loadingOlder, mac, focusSignal, onPick, onAsk, onOpenChat, onKeepChat,
+    onOpenLibrary, onOpenSavedChat, onNewChat, onLoadEarlier, onDismiss, onSimplify, onHover } = props
   const pillRef = useRef<HTMLButtonElement>(null)
   const pupilRefs = useRef<(SVGGElement | null)[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
@@ -124,7 +137,9 @@ export function Companion(props: Props): React.JSX.Element {
   const [collapsed, setCollapsed] = useState(false)
   const [draft, setDraft] = useState('')
   const visible = mode !== 'hidden'
-  const reportPane = mode === 'chat' && !collapsed && !busy && thread.some((turn) => turn.answered)
+  const reportPane = mode === 'chat' && !collapsed && !busy && !forkOffer && thread.some((turn) => turn.answered)
+  const lastTurn = thread.at(-1)
+  const chatLabel = activeChat?.title ?? thread[0]?.question ?? 'New chat'
 
   // Pupils ease toward the pointer.
   useEffect(() => {
@@ -200,15 +215,18 @@ export function Companion(props: Props): React.JSX.Element {
     setTimeout(() => inputRef.current?.focus(), 60)
   }, [])
   useEffect(() => {
-    if (focusSignal) focusInput()
-  }, [focusSignal, focusInput])
+    if (focusSignal && mode === 'chat') focusInput()
+  }, [focusSignal, mode, focusInput])
 
-  // A new turn reopens a collapsed bubble; new text keeps the latest line in view.
-  useEffect(() => setCollapsed(false), [thread.length])
+  useEffect(() => {
+    setDraft('')
+    setCollapsed(false)
+  }, [chatKey])
+  useEffect(() => setCollapsed(false), [lastTurn?.question, forkOffer, mode])
   useEffect(() => {
     const el = threadRef.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [thread, status])
+  }, [lastTurn, status, mode])
 
   useEffect(() => {
     const pane = paneRef.current
@@ -228,10 +246,12 @@ export function Companion(props: Props): React.JSX.Element {
     }
     const observer = new ResizeObserver(publish)
     observer.observe(pane)
+    pane.addEventListener('animationend', publish)
     addEventListener('resize', publish)
     publish()
     return () => {
       observer.disconnect()
+      pane.removeEventListener('animationend', publish)
       removeEventListener('resize', publish)
     }
   }, [reportPane, pos.x, pos.y])
@@ -280,6 +300,7 @@ export function Companion(props: Props): React.JSX.Element {
   const onFaceClick = (): void => {
     if (justDragged.current) return
     if (mode === 'nudge') pick()
+    else if (forkOffer) onKeepChat()
     else setCollapsed((c) => !c)
   }
 
@@ -293,7 +314,6 @@ export function Companion(props: Props): React.JSX.Element {
     ...(questions ?? []).map((q, i) => ({ text: q, kbd: key(i), onPick: () => pick(q) })),
     { text: questions?.length ? 'Something else? Just explain' : 'Explain what I’m looking at', onPick: () => pick() }
   ]
-  const chips: ThoughtItem[] = (questions ?? []).map((q) => ({ text: q, onPick: () => pick(q) }))
   const thinking = (mode === 'nudge' && questions === null) || status.kind === 'thinking'
 
   const eye = (cx: number, i: number): React.JSX.Element =>
@@ -341,52 +361,97 @@ export function Companion(props: Props): React.JSX.Element {
             <span className="thought-tail small" />
           </>
         )}
-        {mode === 'chat' && !collapsed && (
-          <div className="talk" ref={paneRef} style={{ maxHeight: room }}>
-            <div className="talk-thread" ref={threadRef}>
-              {thread.length === 0 && <p className="talk-empty">Ask Ojos a question to start a chat.</p>}
-              {thread.map((t, i) => (
-                <div className="talk-turn" key={i}>
-                  <div className="talk-q">{t.question ?? (t.title || 'Explain what I’m looking at')}</div>
-                  {t.says.map((s, j) => (
-                    <p key={j}>{s}</p>
-                  ))}
-                </div>
-              ))}
-              {status.kind === 'thinking' && (
-                <div className="talk-status" role="status">
-                  <span className="dot" />
-                  <span className="dot" />
-                  <span className="dot" />
-                  {status.text && <span>{status.text}</span>}
-                </div>
+        {!collapsed && (mode === 'chat' || (mode === 'library' && thread.length > 0)) && (
+          <div className={`talk ${forkOffer ? 'with-fork' : ''} ${mode === 'library' ? 'leaving' : ''}`}
+            ref={paneRef} style={{ maxHeight: room }} inert={mode === 'library'}
+            onKeyDown={(event) => { if (forkOffer && event.key === 'Escape') onKeepChat() }}>
+            <div className="talk-content" inert={forkOffer}>
+              <div className="talk-thread" ref={threadRef}>
+                {olderBefore !== null && (
+                  <button type="button" className="chat-action earlier" onClick={onLoadEarlier} disabled={loadingOlder || busy}>
+                    {loadingOlder ? 'Loading earlier messages…' : 'Load earlier messages'}
+                  </button>
+                )}
+                {thread.length === 0 && <p className="talk-empty">Ask Ojos a question to start a chat.</p>}
+                {thread.map((t, i) => (
+                  <div className="talk-turn" key={i}>
+                    <div className="talk-q">{t.question ?? (t.title || 'Explain what I’m looking at')}</div>
+                    {t.says.map((s, j) => (
+                      <p key={j}>{s}</p>
+                    ))}
+                  </div>
+                ))}
+                {status.kind === 'thinking' && (
+                  <div className="talk-status" role="status">
+                    <span className="dot" />
+                    <span className="dot" />
+                    <span className="dot" />
+                    {status.text && <span>{status.text}</span>}
+                  </div>
+                )}
+                {status.kind === 'error' && <div className="talk-status err" role="alert">{status.text}</div>}
+              </div>
+              {!busy && offerSimpler && (
+                <button type="button" className="talk-simplify" onClick={onSimplify}>Explain it another way</button>
               )}
-              {status.kind === 'error' && <div className="talk-status err" role="alert">{status.text}</div>}
+              <form className="talk-ask" onSubmit={send}>
+                <input
+                  ref={inputRef}
+                  value={draft}
+                  maxLength={8000}
+                  placeholder={thread.length ? 'Ask a follow-up…' : 'Ask Ojos…'}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onPointerDown={() => window.ojos.setFocus(true)}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Escape') return
+                    e.currentTarget.blur()
+                    window.ojos.setFocus(false)
+                  }}
+                />
+                <button type="submit" disabled={busy || !draft.trim()} aria-label="Send">
+                  <svg viewBox="0 0 16 16" width="14" height="14">
+                    <path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" />
+                  </svg>
+                </button>
+              </form>
             </div>
-            {!busy && <Thought items={chips} compact />}
-            {!busy && offerSimpler && (
-              <button type="button" className="talk-simplify" onClick={onSimplify}>Explain it another way</button>
+            {forkOffer && (
+              <section className="fork-offer" aria-label="Start a new chat">
+                <h2>Start a new chat?</h2>
+                {activeChat && <p>Your current chat stays saved.</p>}
+                {questions === null ? (
+                  <p className="talk-status" role="status">Finding a question…</p>
+                ) : (
+                  (questions.length ? questions : ['Explain what I’m looking at']).map((question) => (
+                    <button key={question} className="fork-question" type="button" onClick={() => onPick(question)}>
+                      {question}
+                    </button>
+                  ))
+                )}
+                <button type="button" className="chat-action" onClick={onKeepChat}>Keep current chat</button>
+              </section>
             )}
-            <form className="talk-ask" onSubmit={send}>
-              <input
-                ref={inputRef}
-                value={draft}
-                maxLength={8000}
-                placeholder={thread.length ? 'Ask a follow-up…' : 'Ask Ojos…'}
-                onChange={(e) => setDraft(e.target.value)}
-                onPointerDown={() => window.ojos.setFocus(true)}
-                onKeyDown={(e) => {
-                  if (e.key !== 'Escape') return
-                  e.currentTarget.blur()
-                  window.ojos.setFocus(false)
-                }}
-              />
-              <button type="submit" disabled={busy || !draft.trim()} aria-label="Send">
-                <svg viewBox="0 0 16 16" width="14" height="14">
-                  <path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" />
-                </svg>
-              </button>
-            </form>
+          </div>
+        )}
+        {mode === 'library' && !collapsed && (
+          <div className="talk chat-library" style={{ maxHeight: room }}>
+            <div className="chat-list-head">
+              <h2>Saved chats</h2>
+              <button type="button" className="chat-action" disabled={busy || !!openingChat} onClick={onNewChat}>New chat</button>
+            </div>
+            <div className="chat-list-scroll" aria-busy={savedChats === null && !libraryError}>
+              {libraryError && <p className="talk-status err" role="alert">{libraryError}</p>}
+              {libraryError && savedChats === null && <button type="button" className="chat-action" onClick={onOpenLibrary}>Try again</button>}
+              {!libraryError && savedChats === null && <p className="talk-empty" role="status">Loading saved chats…</p>}
+              {savedChats?.length === 0 && <p className="talk-empty">Your answered chats will appear here.</p>}
+              {savedChats?.map((chat) => (
+                <button type="button" key={chat.id} className="chat-list-row" aria-current={chat.id === activeChat?.id}
+                  disabled={busy || !!openingChat} onClick={() => onOpenSavedChat(chat.id)}>
+                  <strong title={chat.title}>{chat.title}</strong>
+                  <span title={chat.description}>{openingChat === chat.id ? 'Opening…' : chat.description}</span>
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -425,10 +490,20 @@ export function Companion(props: Props): React.JSX.Element {
         </svg>
       </button>
       <div className="ojo-bar">
-        <button onClick={mode === 'chat' ? focusInput : onOpenChat} aria-label="Chat with Ojos" title="Chat with Ojos">
+        <button className={mode === 'chat' ? 'active' : ''} onClick={mode === 'chat' ? focusInput : onOpenChat}
+          disabled={forkOffer || !!openingChat} aria-pressed={mode === 'chat'} aria-label="Chat with Ojos"
+          title={mode === 'chat' ? chatLabel : 'Chat with Ojos'}>
           <svg viewBox="0 0 16 16" width="15" height="15">
             <path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z" />
           </svg>
+          <span className="ojo-nav-label" aria-hidden="true">{chatLabel}</span>
+        </button>
+        <button className={mode === 'library' ? 'active' : ''} onClick={onOpenLibrary} disabled={busy || !!openingChat}
+          aria-pressed={mode === 'library'} aria-label="Open saved chats" title="Saved chats">
+          <svg viewBox="0 0 16 16" width="15" height="15">
+            <path d="M5.5 4h7M5.5 8h7M5.5 12h7M2.5 4h.1M2.5 8h.1M2.5 12h.1" />
+          </svg>
+          <span className="ojo-nav-label" aria-hidden="true">Chat list</span>
         </button>
         <button onClick={onDismiss} aria-label="Close" title="Close">
           <svg viewBox="0 0 16 16" width="15" height="15">

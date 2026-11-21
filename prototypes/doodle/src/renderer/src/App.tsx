@@ -3,9 +3,10 @@ import { Companion, type TurnView } from './components/Companion'
 import { DoodleCanvas } from './components/DoodleCanvas'
 import { ReadyToast } from './components/ReadyToast'
 import type { DoodleEngine, EngineHooks } from './doodle/engine'
+import type { SavedChat } from '../../shared/commands'
 
 type Status = { kind: 'idle' | 'thinking' | 'error'; text?: string }
-type Mode = 'hidden' | 'nudge' | 'chat'
+type Mode = 'hidden' | 'nudge' | 'chat' | 'library'
 
 const editLast = (thread: TurnView[], edit: (t: TurnView) => TurnView): TurnView[] =>
   thread.length ? [...thread.slice(0, -1), edit(thread[thread.length - 1])] : thread
@@ -17,6 +18,14 @@ export function App(): React.JSX.Element {
   const [thread, setThread] = useState<TurnView[]>([])
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
   const [busy, setBusy] = useState(false)
+  const [forkOffer, setForkOffer] = useState(false)
+  const [savedChats, setSavedChats] = useState<SavedChat[] | null>(null)
+  const [libraryError, setLibraryError] = useState<string | null>(null)
+  const [openingChat, setOpeningChat] = useState<string | null>(null)
+  const [activeChat, setActiveChat] = useState<SavedChat | null>(null)
+  const [chatKey, setChatKey] = useState(0)
+  const [olderBefore, setOlderBefore] = useState<number | null>(null)
+  const [loadingOlder, setLoadingOlder] = useState(false)
   const [offerSimpler, setOfferSimpler] = useState(false)
   const [gaze, setGaze] = useState<{ x: number; y: number } | null>(null)
   const [toast, setToast] = useState<string | null>(null)
@@ -27,13 +36,22 @@ export function App(): React.JSX.Element {
   const nudgeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const modeRef = useRef<Mode>('hidden')
   modeRef.current = mode
-  const threadRef = useRef<TurnView[]>([])
-  threadRef.current = thread
+  const forkRef = useRef(false)
+  forkRef.current = forkOffer
+  const libraryVersion = useRef(0)
+  const transcriptVersion = useRef(0)
   const setOverUi = useCallback((over: boolean) => window.ojos.setOverPanel(over), [])
 
   const clearNudgeTimer = useCallback(() => {
     if (nudgeTimer.current) clearTimeout(nudgeTimer.current)
   }, [])
+
+  const keepChat = useCallback(() => {
+    clearNudgeTimer()
+    setForkOffer(false)
+    setQuestions(null)
+    window.ojos.nudgeHidden()
+  }, [clearNudgeTimer])
 
   // Ignored mascot goes away: they were probably just thinking. Paused while hovered,
   // and never while a conversation is open.
@@ -41,18 +59,22 @@ export function App(): React.JSX.Element {
     (ms: number) => {
       clearNudgeTimer()
       nudgeTimer.current = setTimeout(() => {
+        if (modeRef.current === 'chat' && forkRef.current) {
+          keepChat()
+          return
+        }
         if (modeRef.current !== 'nudge') return
         setMode('hidden')
         window.ojos.nudgeHidden()
       }, ms)
     },
-    [clearNudgeTimer]
+    [clearNudgeTimer, keepChat]
   )
   const onHover = useCallback(
     (over: boolean) => {
       setOverUi(over)
       if (over) clearNudgeTimer()
-      else if (modeRef.current === 'nudge') armNudgeTimeout(6000)
+      else if (modeRef.current === 'nudge' || forkRef.current) armNudgeTimeout(6000)
     },
     [setOverUi, clearNudgeTimer, armNudgeTimeout]
   )
@@ -60,9 +82,48 @@ export function App(): React.JSX.Element {
   const openChat = useCallback(() => {
     clearNudgeTimer()
     if (fadeTimer.current) clearTimeout(fadeTimer.current)
+    ++libraryVersion.current
+    setOpeningChat(null)
+    window.ojos.setChatListOpen(false)
     setMode('chat')
     setFocusSignal((n) => n + 1)
   }, [clearNudgeTimer])
+
+  const openLibrary = useCallback(() => {
+    clearNudgeTimer()
+    if (fadeTimer.current) clearTimeout(fadeTimer.current)
+    setForkOffer(false)
+    setQuestions(null)
+    setOpeningChat(null)
+    setSavedChats(null)
+    setLibraryError(null)
+    setMode('library')
+    window.ojos.setFocus(false)
+    window.ojos.setChatListOpen(true)
+    const revision = ++libraryVersion.current
+    void window.ojos.listChats().then((chats) => {
+      if (libraryVersion.current === revision) setSavedChats(chats)
+    }).catch(() => {
+      if (libraryVersion.current === revision) setLibraryError('Could not load your saved chats.')
+    })
+  }, [clearNudgeTimer])
+
+  const loadEarlier = async (): Promise<void> => {
+    if (olderBefore === null || loadingOlder || !activeChat) return
+    const revision = transcriptVersion.current
+    setLoadingOlder(true)
+    try {
+      const page = await window.ojos.olderChatTurns(olderBefore)
+      if (transcriptVersion.current !== revision || page.chat?.id !== activeChat.id) return
+      setThread((turns) => [...page.turns.map(({ question, answer }) =>
+        ({ question, title: question, says: [answer], answered: true })), ...turns])
+      setOlderBefore(page.older_before_seq)
+    } catch {
+      if (transcriptVersion.current === revision) setStatus({ kind: 'error', text: 'Could not load earlier messages.' })
+    } finally {
+      if (transcriptVersion.current === revision) setLoadingOlder(false)
+    }
+  }
 
   const dismissLocal = useCallback(() => {
     clearNudgeTimer()
@@ -70,13 +131,21 @@ export function App(): React.JSX.Element {
     setMode('hidden')
     setBusy(false)
     setOfferSimpler(false)
+    setForkOffer(false)
     setGaze(null)
+    ++transcriptVersion.current
+    ++libraryVersion.current
+    setThread([])
+    setActiveChat(null)
+    setChatKey((key) => key + 1)
+    setOlderBefore(null)
+    setLoadingOlder(false)
+    setOpeningChat(null)
+    setQuestions(null)
+    setStatus({ kind: 'idle' })
     if (fadeTimer.current) clearTimeout(fadeTimer.current)
     fadeTimer.current = setTimeout(() => {
       engineRef.current?.reset()
-      setThread([])
-      setQuestions(null)
-      setStatus({ kind: 'idle' })
     }, 400) // after the CSS fade
   }, [clearNudgeTimer])
 
@@ -91,21 +160,37 @@ export function App(): React.JSX.Element {
         // Might just be thinking: offer help, never force it.
         if (fadeTimer.current) clearTimeout(fadeTimer.current)
         setQuestions(null)
-        if (modeRef.current === 'chat') return // new suggestions show up inside the conversation
+        if (modeRef.current === 'library') return
+        if (modeRef.current === 'chat') {
+          setForkOffer(true)
+          armNudgeTimeout(20_000)
+          return
+        }
         setThread([])
         setStatus({ kind: 'idle' })
         setMode('nudge')
         armNudgeTimeout(15000)
       }),
-      window.ojos.on('suggest', (sug) => {
-        // Inside a conversation, don't offer again what was already asked.
-        const asked = new Set(threadRef.current.map((t) => t.question))
-        setQuestions(sug.questions.filter((q) => !asked.has(q)))
-      }),
+      window.ojos.on('suggest', (sug) => setQuestions(sug.questions)),
       window.ojos.on('chat', openChat),
+      window.ojos.on('chat-list', openLibrary),
+      window.ojos.on('chat-list-error', (text) => {
+        setOpeningChat(null)
+        setLibraryError(text)
+      }),
       window.ojos.on('chat-help', () => setOfferSimpler(true)),
-      window.ojos.on('chat-history', (turns) => {
+      window.ojos.on('chat-meta', (chat) => {
+        setActiveChat(chat)
+        setSavedChats((saved) => saved && [chat, ...saved.filter((item) => item.id !== chat.id)])
+      }),
+      window.ojos.on('chat-history', ({ chat, turns, older_before_seq }) => {
+        ++transcriptVersion.current
+        setChatKey((key) => key + 1)
         setThread(turns.map(({ question, answer }) => ({ question, title: question, says: [answer], answered: true })))
+        setActiveChat(chat)
+        setOlderBefore(older_before_seq)
+        setLoadingOlder(false)
+        setForkOffer(false)
         setOfferSimpler(false)
         setQuestions([])
         setStatus({ kind: 'idle' })
@@ -115,8 +200,16 @@ export function App(): React.JSX.Element {
         clearNudgeTimer()
         if (fadeTimer.current) clearTimeout(fadeTimer.current)
         engineRef.current?.reset()
+        if (fresh) {
+          ++transcriptVersion.current
+          setChatKey((key) => key + 1)
+          setActiveChat(null)
+          setOlderBefore(null)
+          setLoadingOlder(false)
+        }
         setThread((prev) => [...(fresh ? [] : prev), { question, title: question ?? '', says: [] }])
-        setQuestions((qs) => (qs ?? []).filter((q) => q !== question))
+        setQuestions(null)
+        setForkOffer(false)
         setGaze(gaze ?? null)
         setStatus({ kind: 'thinking' })
         setOfferSimpler(false)
@@ -143,7 +236,7 @@ export function App(): React.JSX.Element {
       window.ojos.on('dismiss', dismissLocal)
     ]
     return () => offs.forEach((off) => off())
-  }, [dismissLocal, clearNudgeTimer, armNudgeTimeout, openChat])
+  }, [dismissLocal, clearNudgeTimer, armNudgeTimeout, openChat, openLibrary])
 
   return (
     <>
@@ -163,12 +256,29 @@ export function App(): React.JSX.Element {
         thread={thread}
         status={status}
         busy={busy}
+        forkOffer={forkOffer}
+        savedChats={savedChats}
+        libraryError={libraryError}
+        openingChat={openingChat}
+        activeChat={activeChat}
+        chatKey={chatKey}
+        olderBefore={olderBefore}
+        loadingOlder={loadingOlder}
         offerSimpler={offerSimpler}
         mac={mac}
         focusSignal={focusSignal}
         onPick={(q) => window.ojos.accept(q)}
         onAsk={(text) => window.ojos.ask(text)}
         onOpenChat={openChat}
+        onKeepChat={keepChat}
+        onOpenLibrary={openLibrary}
+        onOpenSavedChat={(id) => {
+          setOpeningChat(id)
+          setLibraryError(null)
+          window.ojos.openSavedChat(id)
+        }}
+        onNewChat={() => window.ojos.newChat()}
+        onLoadEarlier={() => void loadEarlier()}
         onDismiss={() => window.ojos.dismiss()}
         onSimplify={() => {
           setOfferSimpler(false)
