@@ -50,7 +50,7 @@ One `interval.finalized` message is emitted for each eligible interval. The desk
 
 ## Desktop to backend
 
-`POST /v1/jobs` uses a bearer token and `multipart/form-data` with three parts. `manifest` and `gaze` are UTF-8 JSON. `video` is a playable `video/mp4`. Cap the multipart body at 32 MiB for the demo.
+`POST /v1/jobs` uses a bearer token and `multipart/form-data` with three parts. `manifest` and `gaze` are UTF-8 JSON. `video` is a playable `video/mp4`. The demo cap is 32 MiB. The `manifest` remains version 1. New desktop builds use gaze sidecar version 2, described below.
 
 ```json
 {
@@ -84,7 +84,47 @@ One `interval.finalized` message is emitted for each eligible interval. The desk
 }
 ```
 
-Export a sorted 200,000 µs grid starting at clip zero, with points outside the reliable gaze history marked invalid. The example shows two entries from that grid. If gaze is unavailable for the clip, send `samples: []`. Evaluate each grid point at `clip_start_us + time_us` in the session history. Media and gaze use the same actual start, including any keyframe lead-in. Send relative event bounds to Gemini after intersecting the event with the exported clip.
+This is the legacy single-tracker gaze sidecar. It uses a sorted 200,000 µs grid starting at clip zero and sends `samples: []` when gaze is unavailable. Keep version 1 decoding for existing replay fixtures.
+
+### Gaze and confusion sidecar v2
+
+`exportVisionSeries` in [`models/vision/index.mjs`](../models/vision/index.mjs) returns `{gaze_status, gaze}`. Place `gaze_status` in the manifest and send `gaze` as the multipart JSON part. The backend passes the same sidecar to Gemini with the clean screen and playback video. The backend can use the individual estimates, fused point and selected region alongside the confusion score. Evidence for an answer comes from the screen and playback audio.
+
+```json
+{
+  "schema_version": 2,
+  "timebase": "clip_relative_us",
+  "step_us": 200000,
+  "viewport_width_px": 1920,
+  "viewport_height_px": 1200,
+  "models": {
+    "model1": "webeyetrack-blazegaze-75fbd2f-ridge-v1",
+    "model2": "eth-xgaze-resnet50-epoch24-camera-plane-ridge-v1",
+    "confusion": "confusion-devemo-plus-gru-8hz-1"
+  },
+  "samples": [{
+    "time_us": 0,
+    "confidence": 0.82,
+    "confidence_raw": 0.91,
+    "confidence_offset_us": -10000,
+    "x_model1": 940, "y_model1": 382,
+    "x_model2": 990, "y_model2": 405,
+    "uncertainty_model1_px": 147, "uncertainty_model2_px": 142,
+    "model1_offset_us": 0, "model2_offset_us": 10000,
+    "average_x": 965, "average_y": 393.5,
+    "maxbox": {"x": 793, "y": 235, "w": 339, "h": 312},
+    "fusion_mode": "paired"
+  }]
+}
+```
+
+- `time_us` is measured from the actual first playable time of the MP4, including any keyframe lead-in. Sample offsets are signed microseconds relative to their row and preserve capture skew. Clip bins are half-open and spaced 200,000 µs apart. Every row is retained so scores survive if both gaze tracks are unavailable. Camera frames, landmarks, and calibration coefficients stay local.
+- Gaze uses the nearest observation within 100 ms. An invalid nearest observation yields null fields for that tracker. An offline row may use an observation shortly after the grid time. Confusion uses the most recent valid score less than 250 ms old. Its nearest preceding invalid observation clears the score. `confidence` is the smoothed confusion softmax and `confidence_raw` is its raw value. The gaze radii are held-out residuals in pixels.
+- Fuse when both observation timestamps differ by less than 100 ms. `average_x` and `average_y` are the arithmetic mean and `maxbox` is the smallest axis-aligned rectangle covering both padded estimates, clipped to the encoded viewport. Its origin is top-left and `w`/`h` are extents in pixels. The box serves as a region to inspect. It can span unrelated screen content when gaze estimates disagree widely.
+- With one usable tracker, the average and box use that tracker. If both points are usable individually but too far apart in time, preserve both in the row and use model1 for the fused fields. `fusion_mode` is `paired`, `model1_only`, `model2_only`, or `unavailable`. With neither tracker, the coordinates, offsets, radii, average and box are null. The sidecar's confusion model ID can be null when the worker is disabled.
+- Scope histories to the active session and capture epoch. The desktop uses the recorded clip start for the sidecar and rebases event bounds to the same clock before submitting the job. Do not send pixels from a crop of the display as though they belonged to the full viewport.
+
+For a standalone fixture, run `node models/vision/replay.mjs models/vision/fixtures/handoff.json`. It emits a paired row, a single-tracker row, and an unavailable row that share a clip-relative clock.
 
 ## Backend to desktop
 

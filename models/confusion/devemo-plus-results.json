@@ -1,0 +1,265 @@
+{
+  "dataset": "DevEmo+ v2",
+  "dataset_doi": "10.5281/zenodo.21293919",
+  "archive_md5": "c0c1f173805db03932a0bafaad6bbd85",
+  "dataset_license": "CC BY-NC 4.0",
+  "evaluation_unit": "clip",
+  "splits_at_8hz": {
+    "train": {
+      "clips": 159,
+      "participants": 35,
+      "annotation_counts": {
+        "Confusion": 55,
+        "Neutral": 104
+      },
+      "class_counts": {
+        "1": 55,
+        "0": 104
+      },
+      "usable_class_counts": {
+        "1": 53,
+        "0": 98
+      },
+      "sampled_frames": 6336,
+      "usable_frames": 5842,
+      "usable_face_coverage": 0.9220328282828283,
+      "quality": {
+        "usable": 5842,
+        "out_of_frame": 489,
+        "missing_face": 5
+      },
+      "skipped_ticks": 0
+    },
+    "validation": {
+      "clips": 35,
+      "participants": 7,
+      "annotation_counts": {
+        "Confusion": 12,
+        "Neutral": 23
+      },
+      "class_counts": {
+        "1": 12,
+        "0": 23
+      },
+      "usable_class_counts": {
+        "1": 12,
+        "0": 23
+      },
+      "sampled_frames": 1384,
+      "usable_frames": 1363,
+      "usable_face_coverage": 0.9848265895953757,
+      "quality": {
+        "usable": 1363,
+        "missing_face": 21
+      },
+      "skipped_ticks": 0
+    },
+    "test": {
+      "clips": 35,
+      "participants": 8,
+      "annotation_counts": {
+        "Confusion": 12,
+        "Neutral": 23
+      },
+      "class_counts": {
+        "1": 12,
+        "0": 23
+      },
+      "usable_class_counts": {
+        "1": 12,
+        "0": 23
+      },
+      "sampled_frames": 1416,
+      "usable_frames": 1415,
+      "usable_face_coverage": 0.9992937853107344,
+      "quality": {
+        "usable": 1415,
+        "missing_face": 1
+      },
+      "skipped_ticks": 0
+    }
+  },
+  "runs": [
+    {
+      "dataset": "devemo-plus",
+      "hz": 4,
+      "mode": "gru",
+      "seed": 2026,
+      "pretrained": true,
+      "chunk_us": 4000000,
+      "epochs": 8,
+      "batch": 8,
+      "torch": "2.14.1+cu132",
+      "manifest_sha256": "f29d1aea053b7dc5bbed65b97c0ab8514d8263adb32d2d55bbc5d3e4cc00ef66",
+      "model_version": "confusion-devemo-plus-gru-4hz-1",
+      "parameters": 1100194,
+      "best_epoch": 8,
+      "test": {
+        "clips": 35,
+        "positive": 12,
+        "negative": 23,
+        "accuracy": 0.6,
+        "majority_accuracy": 0.6571428571428571,
+        "balanced_accuracy": 0.5561594202898551,
+        "precision": 0.4166666666666667,
+        "recall": 0.4166666666666667,
+        "average_precision": 0.6353042243467435,
+        "roc_auc": 0.7065217391304348,
+        "tp": 5,
+        "fp": 7,
+        "tn": 16,
+        "fn": 7,
+        "loss": 1.1627720253808158,
+        "all_clips": 35,
+        "all_clips_majority_accuracy": 0.6571428571428571,
+        "clip_coverage": 1.0,
+        "usable_face_coverage": 0.998587570621469,
+        "skipped_ticks": 0
+      },
+      "export": {
+        "onnx_sha256": "6686eb0ac7db94dca58b4176cee8913b757ea555fa28a4b73bcd8d42109712be",
+        "parity": {
+          "frames": 24,
+          "reset_before_frame": 16,
+          "max_absolute_error": {
+            "probabilities": 1.1920928955078125e-07,
+            "state_out": 5.066394805908203e-07
+          }
+        }
+      }
+    },
+    {
+      "dataset": "devemo-plus",
+      "hz": 8,
+      "mode": "gru",
+      "seed": 2026,
+      "pretrained": true,
+      "chunk_us": 4000000,
+      "epochs": 8,
+      "batch": 8,
+      "torch": "2.14.1+cu132",
+      "manifest_sha256": "9b251933359379938ceb4576577d5c7ed7f2024b02f13340d25024b84f35de20",
+      "model_version": "confusion-devemo-plus-gru-8hz-1",
+      "parameters": 1100194,
+      "best_epoch": 8,
+      "test": {
+        "clips": 35,
+        "positive": 12,
+        "negative": 23,
+        "accuracy": 0.6,
+        "majority_accuracy": 0.6571428571428571,
+        "balanced_accuracy": 0.5561594202898551,
+        "precision": 0.4166666666666667,
+        "recall": 0.4166666666666667,
+        "average_precision": 0.5948142926761347,
+        "roc_auc": 0.6920289855072463,
+        "tp": 5,
+        "fp": 7,
+        "tn": 16,
+        "fn": 7,
+        "loss": 1.1856031766959598,
+        "all_clips": 35,
+        "all_clips_majority_accuracy": 0.6571428571428571,
+        "clip_coverage": 1.0,
+        "usable_face_coverage": 0.9992937853107344,
+        "skipped_ticks": 0
+      },
+      "export": {
+        "onnx_sha256": "6ee4596e77f114738ae15a414f19053fd04b1cbce52793f4075da0cae6f16896",
+        "parity": {
+          "frames": 24,
+          "reset_before_frame": 16,
+          "max_absolute_error": {
+            "probabilities": 1.6391277313232422e-07,
+            "state_out": 5.364418029785156e-07
+          }
+        }
+      }
+    },
+    {
+      "dataset": "devemo-plus",
+      "hz": 16,
+      "mode": "gru",
+      "seed": 2026,
+      "pretrained": true,
+      "chunk_us": 4000000,
+      "epochs": 8,
+      "batch": 8,
+      "torch": "2.14.1+cu132",
+      "manifest_sha256": "d2d40ef3ca4395d7b5f78cb3589e0fc482a245eb5eb1320cfcabc1b161e6f8e7",
+      "model_version": "confusion-devemo-plus-gru-16hz-1",
+      "parameters": 1100194,
+      "best_epoch": 8,
+      "test": {
+        "clips": 35,
+        "positive": 12,
+        "negative": 23,
+        "accuracy": 0.6,
+        "majority_accuracy": 0.6571428571428571,
+        "balanced_accuracy": 0.5561594202898551,
+        "precision": 0.4166666666666667,
+        "recall": 0.4166666666666667,
+        "average_precision": 0.6129000671957328,
+        "roc_auc": 0.7210144927536232,
+        "tp": 5,
+        "fp": 7,
+        "tn": 16,
+        "fn": 7,
+        "loss": 1.3051660538784096,
+        "all_clips": 35,
+        "all_clips_majority_accuracy": 0.6571428571428571,
+        "clip_coverage": 1.0,
+        "usable_face_coverage": 0.9992248062015504,
+        "skipped_ticks": 235
+      },
+      "export": {
+        "onnx_sha256": "4961e51da1116ff9d88829b306e16ae837abc18955ea663b792318c87621ce63",
+        "parity": {
+          "frames": 24,
+          "reset_before_frame": 16,
+          "max_absolute_error": {
+            "probabilities": 1.1920928955078125e-07,
+            "state_out": 4.470348358154297e-07
+          }
+        }
+      }
+    },
+    {
+      "dataset": "devemo-plus",
+      "hz": 8,
+      "mode": "cnn",
+      "seed": 2026,
+      "pretrained": true,
+      "chunk_us": 4000000,
+      "epochs": 8,
+      "batch": 8,
+      "torch": "2.14.1+cu132",
+      "manifest_sha256": "9b251933359379938ceb4576577d5c7ed7f2024b02f13340d25024b84f35de20",
+      "model_version": "confusion-devemo-plus-cnn-8hz-1",
+      "parameters": 1001122,
+      "best_epoch": 7,
+      "test": {
+        "clips": 35,
+        "positive": 12,
+        "negative": 23,
+        "accuracy": 0.6571428571428571,
+        "majority_accuracy": 0.6571428571428571,
+        "balanced_accuracy": 0.5797101449275363,
+        "precision": 0.5,
+        "recall": 0.3333333333333333,
+        "average_precision": 0.6076809356221121,
+        "roc_auc": 0.746376811594203,
+        "tp": 4,
+        "fp": 4,
+        "tn": 19,
+        "fn": 8,
+        "loss": 0.8109048507043294,
+        "all_clips": 35,
+        "all_clips_majority_accuracy": 0.6571428571428571,
+        "clip_coverage": 1.0,
+        "usable_face_coverage": 0.9992937853107344,
+        "skipped_ticks": 0
+      }
+    }
+  ]
+}

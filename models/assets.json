@@ -1,0 +1,155 @@
+{
+  "schema_version": 1,
+  "files": [
+    {
+      "model": "confusion-devemo-plus-gru-4hz-1",
+      "path": "confusion-devemo-plus-gru-4hz-1/confusion.onnx",
+      "sha256": "6686eb0ac7db94dca58b4176cee8913b757ea555fa28a4b73bcd8d42109712be",
+      "source": "session-analysis/2026-11-21-real-run/assets/devemo-gru-4hz/onnx-verified/confusion.onnx"
+    },
+    {
+      "model": "confusion-devemo-plus-gru-4hz-1",
+      "path": "confusion-devemo-plus-gru-4hz-1/confusion.json",
+      "sha256": "30976fd950b8882b27a3cb4d18f95481fa1cd7f53d863a7af9b845ddbd71e998",
+      "source": "session-analysis/2026-11-21-real-run/assets/devemo-gru-4hz/onnx-verified/confusion.json"
+    },
+    {
+      "model": "confusion-devemo-plus-gru-4hz-1",
+      "path": "confusion-devemo-plus-gru-4hz-1/face_detection_yunet_2023mar.onnx",
+      "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
+      "source": "session-analysis/2026-11-21-real-run/assets/devemo-gru-4hz/onnx-verified/face_detection_yunet_2023mar.onnx"
+    },
+    {
+      "model": "confusion-devemo-plus-gru-4hz-1",
+      "path": "confusion-devemo-plus-gru-4hz-1/YUNET-LICENSE",
+      "sha256": "c83b8120c50ccbd4c4f96edf53141bdd566ebb8f8e9227e415326aa1b1aba958",
+      "source": "session-analysis/2026-11-21-real-run/assets/devemo-gru-4hz/onnx-verified/YUNET-LICENSE"
+    },
+    {
+      "model": "confusion-devemo-plus-gru-8hz-1",
+      "path": "confusion-devemo-plus-gru-8hz-1/confusion.onnx",
+      "sha256": "6ee4596e77f114738ae15a414f19053fd04b1cbce52793f4075da0cae6f16896",
+      "source": "session-analysis/2026-11-21-real-run/assets/devemo-gru-8hz/onnx-verified/confusion.onnx"
+    },
+    {
+      "model": "confusion-devemo-plus-gru-8hz-1",
+      "path": "confusion-devemo-plus-gru-8hz-1/confusion.json",
+      "sha256": "4f71b5a4f430f23faa3a8c293b4784f76709b5468c2806d8125f7ed2f2ba65d1",
+      "source": "session-analysis/2026-11-21-real-run/assets/devemo-gru-8hz/onnx-verified/confusion.json"
+    },
+    {
+      "model": "confusion-devemo-plus-gru-8hz-1",
+      "path": "confusion-devemo-plus-gru-8hz-1/face_detection_yunet_2023mar.onnx",
+      "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
+      "source": "session-analysis/2026-11-21-real-run/assets/devemo-gru-8hz/onnx-verified/face_detection_yunet_2023mar.onnx"
+    },
+    {
+      "model": "confusion-devemo-plus-gru-8hz-1",
+      "path": "confusion-devemo-plus-gru-8hz-1/YUNET-LICENSE",
+      "sha256": "c83b8120c50ccbd4c4f96edf53141bdd566ebb8f8e9227e415326aa1b1aba958",
+      "source": "session-analysis/2026-11-21-real-run/assets/devemo-gru-8hz/onnx-verified/YUNET-LICENSE"
+    },
+    {
+      "model": "confusion-devemo-plus-gru-16hz-1",
+      "path": "confusion-devemo-plus-gru-16hz-1/confusion.onnx",
+      "sha256": "4961e51da1116ff9d88829b306e16ae837abc18955ea663b792318c87621ce63",
+      "source": "session-analysis/2026-11-21-real-run/assets/devemo-gru-16hz/onnx-verified/confusion.onnx"
+    },
+    {
+      "model": "confusion-devemo-plus-gru-16hz-1",
+      "path": "confusion-devemo-plus-gru-16hz-1/confusion.json",
+      "sha256": "d860129256a2e9eb06807c162417130d485a95e656e7705221d825f7865986bb",
+      "source": "session-analysis/2026-11-21-real-run/assets/devemo-gru-16hz/onnx-verified/confusion.json"
+    },
+    {
+      "model": "confusion-devemo-plus-gru-16hz-1",
+      "path": "confusion-devemo-plus-gru-16hz-1/face_detection_yunet_2023mar.onnx",
+      "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
+      "source": "session-analysis/2026-11-21-real-run/assets/devemo-gru-16hz/onnx-verified/face_detection_yunet_2023mar.onnx"
+    },
+    {
+      "model": "confusion-devemo-plus-gru-16hz-1",
+      "path": "confusion-devemo-plus-gru-16hz-1/YUNET-LICENSE",
+      "sha256": "c83b8120c50ccbd4c4f96edf53141bdd566ebb8f8e9227e415326aa1b1aba958",
+      "source": "session-analysis/2026-11-21-real-run/assets/devemo-gru-16hz/onnx-verified/YUNET-LICENSE"
+    },
+    {
+      "model": "confusion-devemo-plus-cnn-8hz-research",
+      "path": "confusion-devemo-plus-cnn-8hz-research/best.pt",
+      "sha256": "c09715f0c67293133b19f76494496e4495c84d1d146c7f36da93a622775306a6",
+      "source": "session-analysis/2026-11-21-real-run/assets/devemo-cnn-8hz/best.pt"
+    },
+    {
+      "model": "devemo-plus-research-archive",
+      "path": "devemo-plus-research-archive/devemo-plus-research.tar.gz",
+      "sha256": "f140b52b6c604ac88f458e4fb21ba9aba04b883174fe8d86b9fccc58f6953221",
+      "source": "confusion/2026-11-21/devemo-plus-research.tar.gz"
+    },
+    {
+      "model": "confusion-devemo-plus-frozen-motion-dev-only",
+      "path": "confusion-devemo-plus-frozen-motion-dev-only/motion-encoder.onnx",
+      "sha256": "3a25b532aee93df51c3141eecc965f9b0c5e64cc26c186736287274b7e350af9",
+      "source": "session-analysis/trigger-v9mjnf/motion-encoder.onnx"
+    },
+    {
+      "model": "confusion-devemo-plus-frozen-motion-dev-only",
+      "path": "confusion-devemo-plus-frozen-motion-dev-only/motion-head.npz",
+      "sha256": "e3288cfa0a09fa5806ef3c606cee01dbcb6329e0c889adca9dfbec7fb93e9b33",
+      "source": "session-analysis/trigger-v9mjnf/motion-head.npz"
+    },
+    {
+      "model": "webeyetrack-blazegaze-75fbd2f-ridge-v1",
+      "path": "webeyetrack-blazegaze-75fbd2f-ridge-v1/web/model.json",
+      "sha256": "a214f074ccd4724cf4ebf008814a05485e7eaa5faf5aaeb85e66b24a1af55688",
+      "source": "webeyetrack-upstream/docs/public/web/model.json"
+    },
+    {
+      "model": "webeyetrack-blazegaze-75fbd2f-ridge-v1",
+      "path": "webeyetrack-blazegaze-75fbd2f-ridge-v1/web/group1-shard1of1.bin",
+      "sha256": "c030a762a2d21ac0f3c59700a723b2d8790f2003b3f8e72fbe31129fcb234e58",
+      "source": "webeyetrack-upstream/docs/public/web/group1-shard1of1.bin"
+    },
+    {
+      "model": "webeyetrack-blazegaze-75fbd2f-ridge-v1",
+      "path": "webeyetrack-blazegaze-75fbd2f-ridge-v1/face_landmarker.task",
+      "sha256": "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff",
+      "source": "webeyetrack-upstream/python/webeyetrack/model_weights/face_landmarker_v2_with_blendshapes.task"
+    },
+    {
+      "model": "webeyetrack-blazegaze-75fbd2f-ridge-v1",
+      "path": "webeyetrack-blazegaze-75fbd2f-ridge-v1/blazegaze_mpiifacegaze.keras",
+      "sha256": "5b011cfe82466896e27b1ac3e18130117cafbc02dbc964a1ad7315f62005cc05",
+      "source": "webeyetrack-upstream/python/webeyetrack/model_weights/blazegaze_mpiifacegaze.keras"
+    },
+    {
+      "model": "webeyetrack-blazegaze-75fbd2f-ridge-v1",
+      "path": "webeyetrack-blazegaze-75fbd2f-ridge-v1/LICENSE",
+      "sha256": "51ce3c5bdd05ed80ed97265386d1324b0f377f86c2289fa295cb37b147f4cb4f",
+      "source": "webeyetrack-upstream/LICENSE"
+    },
+    {
+      "model": "eth-xgaze-resnet50-epoch24-camera-plane-ridge-v1",
+      "path": "eth-xgaze-resnet50-epoch24-camera-plane-ridge-v1/epoch_24_ckpt.pth.tar",
+      "sha256": "f27b06dc22eb9c966a418f130b9f0df5083f81b44fc721197af5f0da8baeffd3",
+      "source": "eth-xgaze-bench/epoch_24_ckpt.pth.tar"
+    },
+    {
+      "model": "eth-xgaze-resnet50-epoch24-camera-plane-ridge-v1",
+      "path": "eth-xgaze-resnet50-epoch24-camera-plane-ridge-v1/face_model.txt",
+      "sha256": "15075125e5bb5573d5719cf15f88b137ecc9f4f135e833841fa545824791f964",
+      "source": "eth-xgaze-bench/face_model.txt"
+    },
+    {
+      "model": "eth-xgaze-resnet50-epoch24-camera-plane-ridge-v1",
+      "path": "eth-xgaze-resnet50-epoch24-camera-plane-ridge-v1/face_landmarker.task",
+      "sha256": "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff",
+      "source": "eth-xgaze-bench/face_landmarker.task"
+    },
+    {
+      "model": "mediapipe-face-landmarker-v1",
+      "path": "mediapipe-face-landmarker-v1/face_landmarker.task",
+      "sha256": "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff",
+      "source": "eth-xgaze-bench/face_landmarker.task"
+    }
+  ]
+}

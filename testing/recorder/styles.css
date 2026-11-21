@@ -1,0 +1,96 @@
+:root {
+  color-scheme: light;
+  font: 16px/1.45 "Segoe UI", sans-serif;
+  color: #202124;
+  background: #fff;
+  text-rendering: optimizeLegibility;
+  font-kerning: normal;
+}
+
+body { margin: 0; }
+
+main {
+  box-sizing: border-box;
+  max-width: 43rem;
+  margin: 0 auto;
+  padding: 3.75rem 1.25rem;
+}
+
+h1 {
+  margin: 0 0 0.65rem;
+  font-size: clamp(1.65rem, 5vw, 2rem);
+  font-weight: 600;
+}
+
+p { margin: 0 0 1rem; }
+a { color: #174ea6; text-underline-offset: 3px; }
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1.25rem 0 0.75rem;
+}
+
+button {
+  padding: 0.55rem 0.85rem;
+  border: 1px solid #c9cdd3;
+  border-radius: 5px;
+  background: #fff;
+  color: #202124;
+  font: inherit;
+  cursor: pointer;
+}
+
+button:hover:enabled { background: #f1f3f4; }
+button:disabled { color: #73777f; cursor: default; }
+[hidden] { display: none !important; }
+button.primary:enabled { color: #fff; background: #185abc; border-color: #185abc; }
+button.primary:hover:enabled { background: #174ea6; }
+:focus-visible { outline: 2px solid #174ea6; outline-offset: 3px; }
+
+dl { margin: 1rem 0; color: #4b5056; }
+dl div { display: flex; gap: 0.75rem; }
+dt { min-width: 4.5rem; font-weight: 600; }
+dd { margin: 0; overflow-wrap: anywhere; }
+
+video {
+  width: min(100%, 18rem);
+  margin-bottom: 0.8rem;
+  border-radius: 5px;
+  background: #f1f3f4;
+}
+
+#status { min-height: 1.5rem; color: #4b5056; }
+#status[data-error="true"] { color: #a50e0e; }
+
+#calibration-screen {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 0;
+  background: #fff;
+  color: #202124;
+}
+
+#calibration-screen:focus-visible { outline: none; }
+#calibration-countdown { margin: 0; font-size: 1.25rem; text-align: center; }
+
+#calibration-dot {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #202124;
+  transform: translate(-50%, -50%);
+}
+
+#calibration-dot::after {
+  content: '';
+  position: absolute;
+  inset: 7px;
+  border-radius: 50%;
+  background: #fff;
+}

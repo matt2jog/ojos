@@ -1,0 +1,152 @@
+{
+  "clip": {
+    "sessionId": "77510d91-432d-4c51-b2e6-59cb27986589",
+    "captureEpoch": 1,
+    "clipStartUs": 1000000,
+    "clipEndUs": 2000000
+  },
+  "history": [
+    {
+      "type": "gaze.sample",
+      "schema_version": 1,
+      "session_id": "77510d91-432d-4c51-b2e6-59cb27986589",
+      "capture_epoch": 1,
+      "time_us": 990000,
+      "x_px": 10,
+      "y_px": 10,
+      "uncertainty_radius_px": 4,
+      "valid": true
+    },
+    {
+      "type": "gaze.sample",
+      "schema_version": 1,
+      "session_id": "77510d91-432d-4c51-b2e6-59cb27986589",
+      "capture_epoch": 1,
+      "time_us": 1040000,
+      "x_px": 60,
+      "y_px": 60,
+      "uncertainty_radius_px": 4,
+      "valid": true
+    },
+    {
+      "type": "gaze.sample",
+      "schema_version": 1,
+      "session_id": "77510d91-432d-4c51-b2e6-59cb27986589",
+      "capture_epoch": 1,
+      "time_us": 1170000,
+      "x_px": 10,
+      "y_px": 10,
+      "uncertainty_radius_px": 4,
+      "valid": true
+    },
+    {
+      "type": "gaze.sample",
+      "schema_version": 1,
+      "session_id": "77510d91-432d-4c51-b2e6-59cb27986589",
+      "capture_epoch": 1,
+      "time_us": 1180000,
+      "x_px": null,
+      "y_px": null,
+      "uncertainty_radius_px": null,
+      "valid": false
+    },
+    {
+      "type": "gaze.sample",
+      "schema_version": 1,
+      "session_id": "77510d91-432d-4c51-b2e6-59cb27986589",
+      "capture_epoch": 1,
+      "time_us": 1230000,
+      "x_px": 70,
+      "y_px": 70,
+      "uncertainty_radius_px": 4,
+      "valid": true
+    },
+    {
+      "type": "gaze.sample",
+      "schema_version": 1,
+      "session_id": "77510d91-432d-4c51-b2e6-59cb27986589",
+      "capture_epoch": 1,
+      "time_us": 1350000,
+      "x_px": 10,
+      "y_px": 10,
+      "uncertainty_radius_px": 4,
+      "valid": true
+    },
+    {
+      "type": "gaze.sample",
+      "schema_version": 1,
+      "session_id": "77510d91-432d-4c51-b2e6-59cb27986589",
+      "capture_epoch": 1,
+      "time_us": 1450000,
+      "x_px": 70,
+      "y_px": 70,
+      "uncertainty_radius_px": 4,
+      "valid": true
+    },
+    {
+      "type": "gaze.sample",
+      "schema_version": 1,
+      "session_id": "77510d91-432d-4c51-b2e6-59cb27986589",
+      "capture_epoch": 2,
+      "time_us": 1600000,
+      "x_px": 18,
+      "y_px": 18,
+      "uncertainty_radius_px": 4,
+      "valid": true
+    },
+    {
+      "type": "gaze.sample",
+      "schema_version": 1,
+      "session_id": "77510d91-432d-4c51-b2e6-59cb27986589",
+      "capture_epoch": 1,
+      "time_us": 1800000,
+      "x_px": 80,
+      "y_px": 80,
+      "uncertainty_radius_px": 4,
+      "valid": true
+    }
+  ],
+  "expected": {
+    "gaze_status": "available",
+    "gaze": {
+      "schema_version": 1,
+      "samples": [
+        {
+          "time_us": 0,
+          "x_px": 20,
+          "y_px": 20,
+          "uncertainty_radius_px": 4,
+          "valid": true
+        },
+        {
+          "time_us": 200000,
+          "x_px": null,
+          "y_px": null,
+          "uncertainty_radius_px": null,
+          "valid": false
+        },
+        {
+          "time_us": 400000,
+          "x_px": null,
+          "y_px": null,
+          "uncertainty_radius_px": null,
+          "valid": false
+        },
+        {
+          "time_us": 600000,
+          "x_px": null,
+          "y_px": null,
+          "uncertainty_radius_px": null,
+          "valid": false
+        },
+        {
+          "time_us": 800000,
+          "x_px": 80,
+          "y_px": 80,
+          "uncertainty_radius_px": 4,
+          "valid": true
+        }
+      ]
+    }
+  }
+}
