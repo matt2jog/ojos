@@ -1,5 +1,5 @@
 import { GoogleGenAI, type GenerateContentConfig } from '@google/genai'
-import type { Cmd, Gaze, Suggestions, Turn } from '../shared/commands'
+import type { Box, Cmd, Color, DrawCmd, Gaze, Point, Suggestions, Turn } from '../shared/commands'
 
 export type GazeSource = 'tracked' | 'pointer' | 'unavailable'
 
@@ -101,11 +101,12 @@ function explainContents(opts: ExplainOptions) {
     answer: clean(turn.says.join(' '), 560)
   }))
   const question = clean(opts.question, 2000)
-  const useOriginal = opts.history && opts.history.firstPngBase64 !== opts.pngBase64 &&
+  const original = opts.history?.firstPngBase64
+  const useOriginal = original && original !== opts.pngBase64 &&
     /\b(?:first|initial|original) (?:screen|screenshot|image)\b/i.test(question)
   const parts = [
     ...(context.length ? [{ text: 'Earlier conversation (reference only): ' + JSON.stringify(context) }] : []),
-    ...(useOriginal ? [{ text: 'Original screenshot (reference only):' }, image(opts.history!.firstPngBase64)] : []),
+    ...(useOriginal ? [{ text: 'Original screenshot (reference only):' }, image(original)] : []),
     { text: 'Current screenshot:' },
     image(opts.pngBase64),
     { text: opts.source === 'typed'
@@ -137,7 +138,55 @@ export async function suggest(opts: Screen & Model): Promise<Suggestions> {
   }
 }
 
-/** Step 2 (explainer): streams parsed commands. Stops early when isCurrent() turns false. */
+const COLORS = new Set(['red', 'blue', 'green', 'yellow'])
+
+function coordinates(value: unknown, length: number): value is number[] {
+  return Array.isArray(value) && value.length === length &&
+    value.every(n => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 1000)
+}
+
+function drawing(row: Record<string, unknown>): DrawCmd | undefined {
+  const color = typeof row.color === 'string' && COLORS.has(row.color) ? row.color as Color : undefined
+  switch (row.draw) {
+    case 'circle':
+    case 'highlight':
+      if (!coordinates(row.box, 4)) return
+      if (row.box[0] >= row.box[2] || row.box[1] >= row.box[3]) return
+      return { draw: row.draw, box: row.box as Box, color }
+    case 'arrow':
+    case 'underline':
+      if (!coordinates(row.from, 2) || !coordinates(row.to, 2)) return
+      return { draw: row.draw, from: row.from as Point, to: row.to as Point, color }
+    case 'label': {
+      const text = clean(row.text, 48)
+      if (!coordinates(row.at, 2) || !text) return
+      return { draw: 'label', at: row.at as Point, text, color }
+    }
+  }
+}
+
+function decodeCommand(line: string, doodles: boolean): Cmd | undefined {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(line)
+  } catch {
+    return
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return
+  const row = parsed as Record<string, unknown>
+  const keys = Object.keys(row)
+  if (keys.length === 1 && 'title' in row) {
+    const title = clean(row.title, 100)
+    return title ? { title } : undefined
+  }
+  if (keys.length === 1 && 'say' in row) {
+    const say = clean(row.say, 450)
+    return say ? { say } : undefined
+  }
+  if (doodles && !('title' in row) && !('say' in row)) return drawing(row)
+}
+
+/** One streaming Gemini request. Only validated commands cross the renderer boundary. */
 export async function streamGemini(opts: ExplainOptions): Promise<void> {
   if (!opts.isCurrent()) return
   opts.signal?.throwIfAborted()
@@ -151,27 +200,46 @@ export async function streamGemini(opts: ExplainOptions): Promise<void> {
     }
   })
 
-  const emit = (raw: string): void => {
-    const line = raw.trim().replace(/^```(json)?|```$/g, '').trim()
-    if (!line) return
-    try {
-      const cmd = JSON.parse(line) as Cmd
-      if ('draw' in cmd && !opts.doodles) return
-      opts.onCmd(cmd)
-    } catch {
-      console.warn('skipped non-JSON line:', line)
+  const MAX_LINE_LENGTH = 4096
+  let titleSent = false
+  let spoken = 0
+  let drawings = 0
+  function emit(line: string): void {
+    if (line.length > MAX_LINE_LENGTH || !opts.isCurrent()) return
+    const cmd = decodeCommand(line.trim(), opts.doodles)
+    if (!cmd) return
+    if ('title' in cmd) {
+      if (titleSent) return
+      titleSent = true
+    } else if ('say' in cmd) {
+      if (spoken >= 5) return
+      if (!titleSent) emit(JSON.stringify({ title: 'Ojos hint' }))
+      spoken++
+    } else {
+      if (!titleSent || drawings >= 5) return
+      drawings++
     }
+    opts.onCmd(cmd)
   }
 
-  let buf = ''
+  // A null buffer means the current line was too large. Resume at its next newline.
+  let buffer: string | null = ''
   for await (const chunk of stream) {
     if (!opts.isCurrent()) return
-    buf += chunk.text ?? ''
-    let nl: number
-    while ((nl = buf.indexOf('\n')) >= 0) {
-      emit(buf.slice(0, nl))
-      buf = buf.slice(nl + 1)
+    const lines = (chunk.text ?? '').split('\n')
+    for (let i = 0; i < lines.length; i++) {
+      if (buffer !== null) {
+        buffer += lines[i]
+        if (buffer.length > MAX_LINE_LENGTH) buffer = null
+      }
+      if (i < lines.length - 1) {
+        if (buffer !== null) emit(buffer)
+        buffer = ''
+      }
     }
   }
-  emit(buf)
+  if (buffer) emit(buffer)
+  if (!spoken && opts.isCurrent()) {
+    emit(JSON.stringify({ say: 'I couldn’t get a readable hint. Try asking about one specific item on the screen.' }))
+  }
 }
