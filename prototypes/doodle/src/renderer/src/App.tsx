@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { DoodleCanvas } from './components/DoodleCanvas'
+import { Nudge } from './components/Nudge'
 import { Panel } from './components/Panel'
 import { ReadyToast } from './components/ReadyToast'
 import type { DoodleEngine, EngineHooks } from './doodle/engine'
@@ -18,6 +19,36 @@ export function App(): React.JSX.Element {
   const [gaze, setGaze] = useState<{ x: number; y: number } | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [nudging, setNudging] = useState(false)
+  const [questions, setQuestions] = useState<string[] | null>(null)
+  const [mac, setMac] = useState(true)
+  const nudgeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const setOverUi = useCallback((over: boolean) => window.ojos.setOverPanel(over), [])
+
+  const hideNudge = useCallback(() => {
+    if (nudgeTimer.current) clearTimeout(nudgeTimer.current)
+    setNudging(false)
+  }, [])
+
+  // Ignored mascot slides away: they were probably just thinking. Paused while hovered.
+  const armNudgeTimeout = useCallback((ms: number) => {
+    if (nudgeTimer.current) clearTimeout(nudgeTimer.current)
+    nudgeTimer.current = setTimeout(() => {
+      setNudging(false)
+      window.ojos.nudgeHidden()
+    }, ms)
+  }, [])
+  const onNudgeHover = useCallback(
+    (over: boolean) => {
+      setOverUi(over)
+      if (over) {
+        if (nudgeTimer.current) clearTimeout(nudgeTimer.current)
+      } else if (nudgingRef.current) armNudgeTimeout(6000)
+    },
+    [setOverUi, armNudgeTimeout]
+  )
+  const nudgingRef = useRef(false)
+  nudgingRef.current = nudging
 
   const clearText = (): void => {
     setTitle('')
@@ -40,6 +71,7 @@ export function App(): React.JSX.Element {
   }
 
   const dismissLocal = useCallback(() => {
+    hideNudge()
     engineRef.current?.cancel()
     setVisible(false)
     setGaze(null)
@@ -48,15 +80,24 @@ export function App(): React.JSX.Element {
       engineRef.current?.reset()
       clearText()
     }, 400) // after the CSS fade
-  }, [])
+  }, [hideNudge])
 
   useEffect(() => {
     const offs = [
       window.ojos.on('ready', (msg) => {
         const [mode, mod] = msg.split('|')
+        setMac(mod === 'Cmd')
         setToast(`👀 Ojos is running (${mode}). Point at something, then press ${mod === 'Cmd' ? '⌘⇧O' : 'Ctrl+Shift+O'}`)
       }),
+      window.ojos.on('nudge', () => {
+        // Might just be thinking: offer help, never force it.
+        setQuestions(null)
+        setNudging(true)
+        armNudgeTimeout(15000)
+      }),
+      window.ojos.on('suggest', (qs) => setQuestions(qs)),
       window.ojos.on('reset', ({ gaze, model }) => {
+        hideNudge()
         if (fadeTimer.current) clearTimeout(fadeTimer.current)
         engineRef.current?.reset()
         clearText()
@@ -74,7 +115,7 @@ export function App(): React.JSX.Element {
       window.ojos.on('dismiss', dismissLocal)
     ]
     return () => offs.forEach((off) => off())
-  }, [dismissLocal])
+  }, [dismissLocal, hideNudge, armNudgeTimeout])
 
   return (
     <>
@@ -93,9 +134,16 @@ export function App(): React.JSX.Element {
           says={says}
           status={status}
           onGotIt={() => window.ojos.dismiss()}
-          onHover={(over) => window.ojos.setOverPanel(over)}
+          onHover={setOverUi}
         />
       </div>
+      <Nudge
+        visible={nudging}
+        questions={questions}
+        mac={mac}
+        onPick={(q) => window.ojos.accept(q)}
+        onHover={onNudgeHover}
+      />
       {toast && <ReadyToast text={toast} />}
     </>
   )

@@ -10,6 +10,8 @@ const api: OjosApi = {
     return () => ipcRenderer.removeListener(channel, handler)
   },
   dismiss: () => ipcRenderer.send('dismiss'),
+  accept: (question) => ipcRenderer.send('accept', question),
+  nudgeHidden: () => ipcRenderer.send('nudge-hidden'),
   setOverPanel: (over) => ipcRenderer.send('mouse', over)
 }
 

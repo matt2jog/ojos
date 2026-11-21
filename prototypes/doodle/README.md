@@ -1,6 +1,6 @@
-# Ojos live-doodle prototype
+# Ojos overlay prototype
 
-Tests the overlay idea: when you're "stuck", hand-drawn marks animate live on your real screen and a side panel explains what's going on. No ML here. A hotkey pretends you've been confused for about 3 seconds, and the mouse pointer stands in for gaze.
+The desktop overlay for Ojos. When the user might be stuck, a mascot slides in with suggested questions. One click or keypress shows a short answer in a side panel. Optional live doodles can draw on the real screen. Design, contract and integration points: [docs/overlay.md](docs/overlay.md).
 
 Stack: Electron + electron-vite + React + TypeScript. Works on macOS and Windows.
 
@@ -8,41 +8,29 @@ Stack: Electron + electron-vite + React + TypeScript. Works on macOS and Windows
 
 ```bash
 npm install
-npm run mock     # scripted doodles around your pointer, no API key needed
-npm run dev      # real Gemini: screenshot + pointer position -> streamed drawings + explanation
+npm run mock            # canned questions and answer, no key needed
+npm run mock:doodles    # same, plus live doodles
+npm run dev             # real Gemini (two models: suggest, then explain)
+npm run dev:doodles
 ```
 
-For `npm run dev`, create `.env` in this folder (it's gitignored):
+For `dev`, create `.env` here (it's gitignored):
 
 ```
 GEMINI_API_KEY=...
-GEMINI_MODEL=gemini-4-hydrogen   # optional, swap to compare models
+GEMINI_SUGGEST_MODEL=gemini-4-hydrogen   # optional
+GEMINI_MODEL=gemini-4-neon               # optional; use gemini-4-hydrogen if your key lacks Neon
 ```
 
-With no `GEMINI_API_KEY`, the app falls back to mock mode.
-
-On macOS, the first real run needs **Screen Recording** permission for Electron (System Settings → Privacy & Security → Screen Recording). Restart after granting it; until you do, screenshots only show the wallpaper.
+With no key, the app falls back to mock mode. On macOS, the first real run needs **Screen Recording** permission for Electron (System Settings → Privacy & Security). Restart the app after granting it.
 
 ## Use
 
-| Key (Ctrl on Windows) | Action |
+| Key (Ctrl/Alt on Windows) | Action |
 | --- | --- |
-| Cmd+Shift+O | "I'm stuck". Point the mouse at the confusing thing first |
-| Cmd+Shift+X / "Got it" button | Dismiss (doodles fade out) |
+| Cmd+Shift+O | Fake confusion event. Point the mouse at the confusing thing first |
+| Option+1 / 2 / 3 | Pick a suggested question while the mascot is showing |
+| Cmd+Shift+X | Dismiss |
 | Cmd+Shift+Q | Quit |
 
-A pill at the bottom of the screen confirms the app started. Clicks pass through to your apps; only the panel is clickable.
-
-## Layout
-
-| Path | What |
-| --- | --- |
-| `src/shared/commands.ts` | **The drawing contract**: `title`, `say`, `draw` (circle, underline, arrow, highlight, label), coordinates 0–1000 |
-| `src/main/index.ts` | Overlay window, hotkeys, screenshot, run cancellation |
-| `src/main/gemini.ts` | Prompt + streaming parser (moves to the Python backend later) |
-| `src/main/mock.ts` | Scripted demo |
-| `src/renderer/src/doodle/engine.ts` | Canvas pen animation (plain TS, runs outside React for 60fps) |
-| `src/renderer/src/App.tsx` | Wires IPC → engine and panel state |
-| `src/renderer/src/components/` | `Panel`, `DoodleCanvas`, `ReadyToast` |
-
-Commands are processed in order, so text and drawings stay in sync. Each `say` types out after the drawing before it finishes.
+A pill at the bottom of the screen confirms the app started. Clicks pass through to your apps except on the mascot, pills and panel.

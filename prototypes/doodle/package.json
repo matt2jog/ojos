@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "electron-vite dev",
     "mock": "electron-vite dev -- --mock",
+    "mock:doodles": "electron-vite dev -- --mock --doodles",
+    "dev:doodles": "electron-vite dev -- --doodles",
     "build": "electron-vite build",
     "typecheck": "tsc"
   },

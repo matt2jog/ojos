@@ -1,3 +1,5 @@
+import { Logo } from './Logo'
+
 interface Props {
   model: string
   title: string
@@ -10,8 +12,8 @@ interface Props {
 export function Panel({ model, title, says, status, onGotIt, onHover }: Props): React.JSX.Element {
   return (
     <div className="panel" onMouseEnter={() => onHover(true)} onMouseLeave={() => onHover(false)}>
-      <div className="panel-brand">
-        <span>👀 Ojos</span>
+      <div className="panel-brand" style={{ alignItems: 'center' }}>
+        <Logo />
         <span>{model}</span>
       </div>
       <div className="panel-title">{title}</div>
