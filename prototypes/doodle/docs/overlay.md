@@ -16,7 +16,7 @@ First-run setup handles permissions, display selection, and optional gaze calibr
 
 Settings shows capture and assistant configuration, opens the existing calibration flow, and changes confusion sensitivity from 0.65 to 0.95. The default remains 0.80. Moving the slider applies the threshold to subsequent camera frames and clears any unfinished confusion interval. Screen and audio keep buffering throughout the change.
 
-While the overlay is hidden, recording continues in the local buffer. Ojos skips automatic suggestions and clip analysis. A manual help request or opening saved chats brings the overlay back.
+An offer stays visible until the user picks a question, declines it, or dismisses the overlay. Hiding Ojos preserves the current offer or chat. Live capture continues during Settings and recalibration. New automatic suggestions wait until the overlay is visible and setup is closed.
 
 | Shortcut | Action |
 | --- | --- |

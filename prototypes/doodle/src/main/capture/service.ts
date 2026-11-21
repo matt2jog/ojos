@@ -35,6 +35,7 @@ type Run = {
   lastFrameAt: number
   lastAudioAt: number
   camera: CameraGeometry | null
+  calibration?: symbol
 }
 
 export class RecordingService {
@@ -138,7 +139,8 @@ export class RecordingService {
           interval.capture_epoch === active.spec.epoch) this.onInterval(interval)
     })
     ipcMain.on('capture:observation', (event, point: Observation) => {
-      if (owner(event)?.spec.mode === 'calibrate') this.onObservation(point)
+      const active = owner(event)
+      if (active?.spec.mode === 'calibrate' || active?.calibration) this.onObservation(point)
     })
     ipcMain.on('capture:calibration-progress', (event, stage: CalibrationStage) => {
       if (owner(event)?.spec.mode === 'calibrate') this.onCalibrationProgress(stage)
@@ -162,9 +164,8 @@ export class RecordingService {
       const now = nowUs()
       if (!this.#platform.screenAllowed()) this.stop('Screen recording permission was revoked.')
       else if (now - active.lastFrameAt > 10_000_000) this.stop('Screen frames stopped arriving.')
-      else if (active.lastAudioAt && now - active.lastAudioAt > 5_000_000) this.stop('Playback audio stopped arriving.')
-      else if (active.spec.loopback && !active.lastAudioAt && now - active.spec.startUs > 5_000_000) {
-        this.#warn(active, 'audio', 'The OS has not delivered playback samples. Clips are screen-only.')
+      else if (active.spec.loopback && now - (active.lastAudioAt || active.spec.startUs) > 5_000_000) {
+        this.#warn(active, 'audio', 'Playback audio is unavailable. Screen capture continues.')
       }
     }, 1500)
     this.#monitor.unref()
@@ -177,9 +178,43 @@ export class RecordingService {
   }
 
   isRecording(): boolean { return this.#active?.spec.mode === 'record' }
-  isCalibrating(): boolean { return this.#active?.spec.mode === 'calibrate' }
+  isCalibrating(): boolean { return this.#active?.spec.mode === 'calibrate' || Boolean(this.#active?.calibration) }
   clock(): number { return nowUs() - (this.#active?.spec.startUs ?? nowUs()) }
   usesDisplay(id: number): boolean { return this.#active?.display.id === id }
+
+  async prepareCalibration(display: Display): Promise<CalibrationReady> {
+    const active = this.#active
+    if (active?.spec.mode !== 'record') return this.start(display, 'calibrate')
+    if (!active.camera) throw new Error('The recording camera is unavailable for calibration.')
+    const request = Symbol()
+    active.calibration = request
+    this.onCalibrationProgress('trackers')
+    try {
+      const trackers: CalibrationReady['trackers'] = await active.win.webContents.executeJavaScript('window.observeCalibration(true)')
+      if (this.#active !== active || active.calibration !== request) throw new Error('Calibration was interrupted.')
+      return { ...active.camera, trackers }
+    } catch (error) {
+      if (this.#active === active && active.calibration === request) this.endCalibration()
+      throw error
+    }
+  }
+
+  endCalibration(): void {
+    const active = this.#active
+    if (!active) return
+    if (active.spec.mode === 'calibrate') this.stop()
+    else if (active.calibration) {
+      active.calibration = undefined
+      void active.win.webContents.executeJavaScript('window.observeCalibration(false)').catch(() => {})
+    }
+  }
+
+  async refreshCalibration(): Promise<void> {
+    const active = this.#active
+    if (active?.spec.mode === 'record' && active.camera) {
+      await active.win.webContents.executeJavaScript('window.refreshCalibration()')
+    }
+  }
 
   status(): CaptureStatus {
     const active = this.#active

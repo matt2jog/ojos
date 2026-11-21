@@ -8,6 +8,8 @@ declare global {
     capture: CaptureBridge
     startCapture: (spec: CaptureSpec) => Promise<CameraGeometry | CalibrationReady | null>
     exportVision: (startUs: number, endUs: number) => VisionExport | undefined
+    observeCalibration: (enabled: boolean) => Promise<Tracker[]>
+    refreshCalibration: () => Promise<void>
   }
   class MediaStreamTrackProcessor {
     constructor(options: { track: MediaStreamTrack; maxBufferSize: number })
@@ -172,8 +174,21 @@ async function startVision(track: MediaStreamTrack, spec: CaptureSpec, camera: C
     }
     if (!Object.keys(readyWorkers).length) throw new Error('Neither eye tracker could start.')
   } else void loadNative('confusion')
+  let observing = spec.mode === 'calibrate'
+  const readyTrackers = (): Tracker[] => (['model1', 'model2'] as const)
+    .filter((lane) => Object.hasOwn(readyWorkers, lane))
+  window.observeCalibration = async (enabled) => {
+    observing = enabled
+    if (!enabled) return []
+    if (!readyTrackers().length) {
+      await Promise.any([primary, secondary].map(async (ready) => {
+        if (!await ready) throw new Error('Eye tracker unavailable.')
+      })).catch(() => { throw new Error('Neither eye tracker is available for calibration.') })
+    }
+    return readyTrackers()
+  }
   const profiles = spec.mode === 'record' ? await media.profiles(geometry) : {}
-  const trackers = (['model1', 'model2'] as const).filter((lane) => Object.hasOwn(readyWorkers, lane))
+  const trackers = readyTrackers()
   // A tracker that becomes ready after the first target has missed part of the calibration.
   const workers = spec.mode === 'calibrate' ? { ...readyWorkers } : Object.fromEntries(['model1', 'model2', 'confusion'].map((lane) => [
     lane, async (packet: Parameters<ReturnType<typeof nativeLane>>[0]) => readyWorkers[lane]?.(packet) ?? null
@@ -182,10 +197,14 @@ async function startVision(track: MediaStreamTrack, spec: CaptureSpec, camera: C
     sessionId: spec.sessionId, captureEpoch: spec.epoch, geometry, profiles, workers, clockUs,
     onInterval: media.interval,
     onObservation: (tracker, timeUs, raw) => {
-      if (spec.mode === 'calibrate') media.observation({ tracker, timeUs, raw })
+      if (observing) media.observation({ tracker, timeUs, raw })
     },
     onError: (error, lane) => media.workerError(lane, error.message)
   })
+  window.refreshCalibration = async () => {
+    const updated = await media.profiles(geometry)
+    vision?.updateProfiles(updated)
+  }
   let frameId = 0
   void frames(track, (frame, timeUs) => vision!.submit(frame, timeUs, ++frameId))
     .catch((error: Error) => media.ended(error.message))

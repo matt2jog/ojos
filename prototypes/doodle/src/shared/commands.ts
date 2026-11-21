@@ -66,14 +66,13 @@ export interface OjosApi {
   on(channel: 'chat-history', fn: (history: ChatHistory) => void): () => void
   on(channel: 'chat-meta', fn: (chat: SavedChat) => void): () => void
   on(channel: 'error' | 'ready' | 'chat-list-error', fn: (msg: string) => void): () => void
-  on(channel: 'done' | 'dismiss' | 'chat' | 'chat-help' | 'chat-list' | 'suggestions-dismissed', fn: () => void): () => void
+  on(channel: 'done' | 'dismiss' | 'chat' | 'chat-help' | 'chat-list', fn: () => void): () => void
   dismiss(): void
   /** User wants help: a picked suggestion, or no question for "explain this". */
   accept(question?: string): void
   /** Typed message: a follow-up in the open conversation, or the first message of a chat. */
   ask(text: string): void
-  /** Mascot was ignored and timed out. */
-  nudgeHidden(): void
+  declineSuggestion(): void
   setOverPanel(over: boolean): void
   /** The overlay normally never takes focus. Typing needs it, so the chat box asks for it. */
   setFocus(on: boolean): void

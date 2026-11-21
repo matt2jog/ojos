@@ -9,6 +9,7 @@ import { Settings } from './Settings'
 type Step = 'welcome' | 'permissions' | 'display' | 'prepare' | 'calibrate' | 'fallback' | 'done' | 'settings'
 const ORDER: Step[] = ['welcome', 'permissions', 'display', 'calibrate', 'done']
 const TRACKERS: Tracker[] = ['model1', 'model2']
+const recordingActive = new URLSearchParams(location.search).has('recording')
 const PREPARATION = {
   camera: { milestone: 0, message: 'Connecting to your camera…' },
   trackers: { milestone: 1, message: 'Loading the eye tracker…' },
@@ -89,7 +90,7 @@ export function SetupApp(): React.JSX.Element {
 
   // Camera preview once allowed.
   useEffect(() => {
-    if (step !== 'permissions' || perms?.camera !== 'granted') return
+    if (recordingActive || step !== 'permissions' || perms?.camera !== 'granted') return
     let disposed = false
     let preview: MediaStream | undefined
     navigator.mediaDevices.getUserMedia({
@@ -254,7 +255,9 @@ export function SetupApp(): React.JSX.Element {
               )}
             </div>
             <div className="cam">
-              {perms?.camera === 'granted' && !camError ? (
+              {recordingActive ? (
+                <span className="cam-empty">Recording is active in the background</span>
+              ) : perms?.camera === 'granted' && !camError ? (
                 <>
                   <video ref={videoRef} muted playsInline />
                   <span className="cam-label">Looking good 👀</span>
@@ -357,7 +360,7 @@ export function SetupApp(): React.JSX.Element {
               <b>Look stuck?</b> The eyes peek in with a few questions you might have.
             </li>
             <li>
-              <b>Pick one</b> (click or {mac ? '⌥1–3' : 'Alt+1–3'}) and the answer appears. Ignore it and it goes away.
+              <b>Pick one</b> (click or {mac ? '⌥1–3' : 'Alt+1–3'}) for an answer, or use the close button to dismiss it.
             </li>
           </ol>
           <button className="btn" onClick={() => void window.setup.finish()}>

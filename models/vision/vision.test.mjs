@@ -51,7 +51,7 @@ test("invalid, future confusion, stale and unaligned gaze remain distinguishable
 const geometry = {cameraId: "camera", cameraWidth: 1280, cameraHeight: 720, displayId: "display",
   displayScale: 1, rotationDeg: 0, viewportWidth: 1920, viewportHeight: 1200};
 
-test("one branded target schedule fits and stores two model-specific profiles", () => {
+test("calibration fits both trackers and updates a live session without clearing its history", async () => {
   const wizard = new EnsembleCalibration(geometry);
   let t = 1000;
   let targets = 0;
@@ -77,6 +77,21 @@ test("one branded target schedule fits and stores two model-specific profiles", 
     sessionId, captureEpoch});
   assert.equal(project(9_000_000, {plane:[50, 50]}).valid, true);
   assert.equal(project(9_200_000, {plane:null}).valid, false);
+
+  let now = 1_000_000;
+  const live = new VisionSession({sessionId, captureEpoch, geometry, clockUs: () => now,
+    workers: {model2: async () => ({plane: [50, 50]})}});
+  const frame = {clone: () => ({close() {}})};
+  live.submit(frame, now, 1);
+  await new Promise(resolve => setImmediate(resolve));
+  live.updateProfiles({model2: profiles.model2.calibration});
+  now += 200_000;
+  live.submit(frame, now, 2);
+  await new Promise(resolve => setImmediate(resolve));
+  const {gaze} = live.exportClip(1_000_000, 1_400_000);
+  assert.equal(gaze.samples[0].fusion_mode, "unavailable");
+  assert.equal(gaze.samples[1].fusion_mode, "model2_only");
+  live.close();
 });
 
 test("dispatcher sheds queued frames and discards late gaze replies", async () => {
