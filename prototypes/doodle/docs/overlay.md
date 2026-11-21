@@ -9,7 +9,7 @@ The user never has to type the question. Their face says *that* they might be st
 ## User flow (MVP)
 
 1. **Confusion event:** the mascot slides in at the right edge of the screen. It's a dark pill with two eyes and a Google-colored "j" nose, so the face reads "o j o". The pupils follow the pointer (gaze later), and it blinks. The rest of the screen stays untouched.
-2. **Suggested questions:** a fast model reads the screenshot and gaze and guesses 2–3 questions specific to what's on screen. They pop out next to the mascot as Notion-style dark pills with shortcuts (⌥1/⌥2/⌥3, Alt on Windows), plus "Something else? Just explain". While loading, a shimmer pill shows and the nose's spark spins.
+2. **Speech bubble and suggested questions:** a fast model reads the screenshot and gaze. The mascot says "Looks like you're stuck on **the TypeError on line 14**. Want a hand?", and 2–3 questions specific to what's on screen appear below it. They pop out next to the mascot as Notion-style dark pills with shortcuts (⌥1/⌥2/⌥3, Alt on Windows), plus "Something else? Just explain". While loading, a shimmer pill shows and the nose's spark spins.
 3. **Pick one:** click a pill, press its shortcut, or click the mascot for a generic explanation. The eyes squint happily, a rainbow glow appears around the screen and the side panel slides in.
 4. **Answer:** the explainer streams a short text answer into the panel, with the chosen question as the heading.
 5. **Close:** "Got it" or Cmd/Ctrl+Shift+X.
@@ -61,10 +61,20 @@ Two calls per confusion event. Both get the screenshot of the display the overla
 **1. Suggest** (fast model, default `gemini-4-hydrogen`). Starts as soon as the mascot appears. Returns JSON:
 
 ```json
-{"questions": ["Why is user None on line 14?", "What does TypeError mean here?", "How do I fix get_user()?"]}
+{
+  "stuck_on": "the TypeError on line 14",
+  "questions": ["Why is user None here?", "What does this TypeError mean?", "How do I fix get_user()?"],
+  "summary": "get_user() returned None, so reading user['name'] fails."
+}
 ```
 
-Three questions at most, each 8 words or fewer, specific to what's on screen. An empty list or an error falls back to the "Explain what I'm looking at" pill.
+| Field | Shown as | Notes |
+| --- | --- | --- |
+| `stuck_on` | Speech bubble: "Looks like you're stuck on …" | Noun phrase naming the actual thing on screen, 7 words or fewer. Empty becomes "Need a hand with this?" |
+| `questions` | Question pills with ⌥1–3 | At most 3, each 8 words or fewer, specific to what's on screen. Empty leaves only "Explain what I'm looking at" |
+| `summary` | Not shown yet | Optional gist of the answer; matches the AI-system pipeline's summary output |
+
+On error the overlay falls back to the generic bubble and pill.
 
 **2. Explain** (stronger model, default `gemini-4-neon`). Called with the chosen question, or none for a generic explanation. Streams newline-delimited JSON, one command per line, applied in order:
 

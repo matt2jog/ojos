@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
+import type { Suggestions } from '../../../shared/commands'
 
 interface Props {
   visible: boolean
   /** null while the fast model is still guessing */
-  questions: string[] | null
+  suggestion: Suggestions | null
   mac: boolean
   onPick(question?: string): void
   onHover(over: boolean): void
@@ -16,7 +17,7 @@ const MAX_LOOK = 5.5 // px the pupils can travel inside each eye
  * be stuck, with suggested questions popping out beside it (Notion-style pills).
  * Pupils follow the pointer (gaze later), it blinks, widens on hover, squints when picked.
  */
-export function Nudge({ visible, questions, mac, onPick, onHover }: Props): React.JSX.Element {
+export function Nudge({ visible, suggestion, mac, onPick, onHover }: Props): React.JSX.Element {
   const pillRef = useRef<HTMLButtonElement>(null)
   const pupilRefs = useRef<(SVGGElement | null)[]>([])
   const [blink, setBlink] = useState(false)
@@ -104,7 +105,7 @@ export function Nudge({ visible, questions, mac, onPick, onHover }: Props): Reac
 
   return (
     <div
-      className={`nudge ${visible ? 'in' : ''} ${hover ? 'hover' : ''} ${blink ? 'blink' : ''} ${questions === null ? 'thinking' : ''} ${happy ? 'happy' : ''}`}
+      className={`nudge ${visible ? 'in' : ''} ${hover ? 'hover' : ''} ${blink ? 'blink' : ''} ${suggestion === null ? 'thinking' : ''} ${happy ? 'happy' : ''}`}
       onMouseEnter={() => {
         setHover(true)
         onHover(true)
@@ -114,34 +115,42 @@ export function Nudge({ visible, questions, mac, onPick, onHover }: Props): Reac
         onHover(false)
       }}
     >
-      <div className="nudge-questions">
-        {questions === null ? (
-          <div className="q-pill q-loading" style={{ animationDelay: '0.45s' }}>
-            <span className="q-shimmer">Thinking of what you might ask…</span>
-          </div>
-        ) : (
+      {/* Speech bubble: what Ojos thinks you're stuck on */}
+      <div className="bubble" key={suggestion ? 'ready' : 'loading'}>
+        {suggestion === null ? (
+          <span className="q-shimmer">Hmm, let me take a look…</span>
+        ) : suggestion.stuck_on ? (
           <>
-            {questions.map((q, i) => (
-              <button
-                key={q}
-                className="q-pill"
-                style={{ animationDelay: `${0.45 + i * 0.07}s` }}
-                onClick={() => pick(q)}
-              >
-                <span className="q-text">{q}</span>
-                <kbd>{key(i)}</kbd>
-              </button>
-            ))}
-            <button
-              className="q-pill q-secondary"
-              style={{ animationDelay: `${0.45 + questions.length * 0.07}s` }}
-              onClick={() => pick()}
-            >
-              <span className="q-text">{questions.length ? 'Something else? Just explain' : 'Explain what I’m looking at'}</span>
-            </button>
+            Looks like you&apos;re stuck on <strong>{suggestion.stuck_on}</strong>. Want a hand?
           </>
+        ) : (
+          <>Need a hand with this?</>
         )}
       </div>
+      {suggestion !== null && (
+        <div className="nudge-questions">
+          {suggestion.questions.map((q, i) => (
+            <button
+              key={q}
+              className="q-pill"
+              style={{ animationDelay: `${0.12 + i * 0.07}s` }}
+              onClick={() => pick(q)}
+            >
+              <span className="q-text">{q}</span>
+              <kbd>{key(i)}</kbd>
+            </button>
+          ))}
+          <button
+            className="q-pill q-secondary"
+            style={{ animationDelay: `${0.12 + suggestion.questions.length * 0.07}s` }}
+            onClick={() => pick()}
+          >
+            <span className="q-text">
+              {suggestion.questions.length ? 'Something else? Just explain' : 'Explain what I’m looking at'}
+            </span>
+          </button>
+        </div>
+      )}
       <button
         ref={pillRef}
         className="nudge-pill"

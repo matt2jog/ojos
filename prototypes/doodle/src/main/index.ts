@@ -4,10 +4,10 @@
 // The mouse pointer stands in for gaze until the eye tracker is wired in.
 import { app, BrowserWindow, globalShortcut, screen, desktopCapturer, ipcMain, type Display } from 'electron'
 import { join } from 'path'
-import { readFileSync } from 'fs'
-import { streamGemini, suggestQuestions } from './gemini'
-import { MOCK_QUESTIONS, streamMock } from './mock'
-import type { Cmd, Gaze } from '../shared/commands'
+import { readFileSync, writeFileSync } from 'fs'
+import { streamGemini, suggest } from './gemini'
+import { MOCK_SUGGESTIONS, streamMock } from './mock'
+import type { Cmd, Gaze, Suggestions } from '../shared/commands'
 
 // Load .env without extra deps.
 try {
@@ -100,15 +100,16 @@ async function nudge(): Promise<void> {
   setPickKeys(true)
 
   try {
-    const questions = MOCK
-      ? await new Promise<string[]>((r) => setTimeout(() => r(MOCK_QUESTIONS), 700))
-      : await suggestQuestions({ apiKey: process.env.GEMINI_API_KEY!, model: SUGGEST_MODEL, pngBase64: await png!, gaze })
+    const sug: Suggestions = MOCK
+      ? await new Promise<Suggestions>((r) => setTimeout(() => r(MOCK_SUGGESTIONS), 900))
+      : await suggest({ apiKey: process.env.GEMINI_API_KEY!, model: SUGGEST_MODEL, pngBase64: await png!, gaze })
     if (myRun !== runId || !pending) return
-    pending.questions = questions.slice(0, 3)
-    win.webContents.send('suggest', pending.questions)
+    pending.questions = sug.questions
+    win.webContents.send('suggest', sug)
   } catch (e) {
     console.error('suggest failed:', e)
-    if (myRun === runId) win.webContents.send('suggest', []) // UI falls back to "Explain this"
+    // UI falls back to a generic bubble + "Explain what I'm looking at"
+    if (myRun === runId) win.webContents.send('suggest', { stuck_on: '', questions: [] })
   }
 }
 
@@ -190,6 +191,19 @@ app.whenReady().then(() => {
   console.log(`  ${mac ? 'Option' : 'Alt'}+1/2/3 = pick a suggested question`)
   console.log(`  ${mod}+Shift+X = dismiss    ${mod}+Shift+Q = quit`)
   win.webContents.once('did-finish-load', () => win.webContents.send('ready', `${mode}|${mod}`))
+
+  // Dev aid: --snapshot=<file.png> triggers a nudge, saves a screenshot of the overlay and quits.
+  const snap = process.argv.find((a) => a.startsWith('--snapshot='))?.split('=')[1]
+  if (snap) {
+    win.webContents.once('did-finish-load', () => {
+      setTimeout(() => void nudge(), 300)
+      setTimeout(async () => {
+        const img = await win.webContents.capturePage()
+        writeFileSync(snap, img.toPNG())
+        app.quit()
+      }, 3200)
+    })
+  }
 })
 
 app.on('will-quit', () => globalShortcut.unregisterAll())

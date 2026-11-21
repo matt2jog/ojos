@@ -4,6 +4,7 @@ import { Nudge } from './components/Nudge'
 import { Panel } from './components/Panel'
 import { ReadyToast } from './components/ReadyToast'
 import type { DoodleEngine, EngineHooks } from './doodle/engine'
+import type { Suggestions } from '../../shared/commands'
 
 type Status = { kind: 'idle' | 'thinking' | 'error'; text?: string }
 
@@ -20,7 +21,7 @@ export function App(): React.JSX.Element {
   const [toast, setToast] = useState<string | null>(null)
   const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [nudging, setNudging] = useState(false)
-  const [questions, setQuestions] = useState<string[] | null>(null)
+  const [suggestion, setSuggestion] = useState<Suggestions | null>(null)
   const [mac, setMac] = useState(true)
   const nudgeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const setOverUi = useCallback((over: boolean) => window.ojos.setOverPanel(over), [])
@@ -91,11 +92,11 @@ export function App(): React.JSX.Element {
       }),
       window.ojos.on('nudge', () => {
         // Might just be thinking: offer help, never force it.
-        setQuestions(null)
+        setSuggestion(null)
         setNudging(true)
         armNudgeTimeout(15000)
       }),
-      window.ojos.on('suggest', (qs) => setQuestions(qs)),
+      window.ojos.on('suggest', (sug) => setSuggestion(sug)),
       window.ojos.on('reset', ({ gaze, model }) => {
         hideNudge()
         if (fadeTimer.current) clearTimeout(fadeTimer.current)
@@ -139,7 +140,7 @@ export function App(): React.JSX.Element {
       </div>
       <Nudge
         visible={nudging}
-        questions={questions}
+        suggestion={suggestion}
         mac={mac}
         onPick={(q) => window.ojos.accept(q)}
         onHover={onNudgeHover}

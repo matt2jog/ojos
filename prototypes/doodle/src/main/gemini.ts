@@ -1,14 +1,17 @@
 import { GoogleGenAI } from '@google/genai'
-import type { Cmd, Gaze } from '../shared/commands'
+import type { Cmd, Gaze, Suggestions } from '../shared/commands'
 
 const CONTEXT = (g: Gaze): string =>
   `The user looked visibly confused for a few seconds while looking at their screen (screenshot attached). Their approximate gaze is [${g.x}, ${g.y}] on a 0-1000 scale (x, y, origin top-left). Gaze is noisy: treat it as "somewhere within ~150 units of this point" and use the screenshot to find the specific thing (paragraph, line of code, error, formula, UI element) they are most likely stuck on.`
 
 const SUGGEST_PROMPT = (g: Gaze): string => `${CONTEXT(g)}
 
-Guess the 3 questions this user most likely wants to ask about it, most likely first. Make them specific to what is on screen (name the actual term, error or element), at most 8 words each, phrased as the user would ask them.
+Return JSON with:
+- "stuck_on": what they seem stuck on, as a short noun phrase naming the actual thing on screen (at most 7 words), e.g. "the TypeError on line 14" or "the second paragraph on entropy". It completes the sentence "Looks like you're stuck on ...".
+- "questions": the 3 questions they most likely want to ask about it, most likely first, specific to what is on screen, at most 8 words each, phrased as the user would ask them.
+- "summary": one or two plain sentences giving the gist of the answer.
 
-Return JSON: {"questions": ["...", "...", "..."]}`
+{"stuck_on": "...", "questions": ["...", "...", "..."], "summary": "..."}`
 
 const EXPLAIN_PROMPT = (g: Gaze, question: string | undefined, doodles: boolean): string => `You are Ojos, a calm tutor. ${CONTEXT(g)}
 
@@ -30,13 +33,13 @@ Draw on the screen while explaining: a draw line, then the say line about it. Al
 }
 Rules: 2-5 say lines. Plain language, no jargon, refer to what is visible on their screen. Be concrete and brief.`
 
-/** Step 1 (fast model): likely questions for the mascot's pills. */
-export async function suggestQuestions(opts: {
+/** Step 1 (fast model): what they're stuck on + likely questions, for the mascot's bubble and pills. */
+export async function suggest(opts: {
   apiKey: string
   model: string
   pngBase64: string
   gaze: Gaze
-}): Promise<string[]> {
+}): Promise<Suggestions> {
   const ai = new GoogleGenAI({ apiKey: opts.apiKey })
   const res = await ai.models.generateContent({
     model: opts.model,
@@ -52,8 +55,12 @@ export async function suggestQuestions(opts: {
     config: { responseMimeType: 'application/json' }
   })
   const parsed = JSON.parse((res.text ?? '{}').replace(/^```(json)?|```$/g, '').trim())
-  const qs: unknown = Array.isArray(parsed) ? parsed : parsed.questions
-  return Array.isArray(qs) ? qs.filter((q): q is string => typeof q === 'string' && q.trim() !== '') : []
+  const qs: unknown = parsed.questions
+  return {
+    stuck_on: typeof parsed.stuck_on === 'string' ? parsed.stuck_on.trim() : '',
+    questions: Array.isArray(qs) ? qs.filter((q): q is string => typeof q === 'string' && q.trim() !== '').slice(0, 3) : [],
+    summary: typeof parsed.summary === 'string' ? parsed.summary : undefined
+  }
 }
 
 /** Step 2 (explainer): streams parsed commands. Stops early when isCurrent() turns false. */

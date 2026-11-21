@@ -1,10 +1,10 @@
-import type { Cmd, Gaze } from '../shared/commands'
+import type { Cmd, Gaze, Suggestions } from '../shared/commands'
 
-export const MOCK_QUESTIONS = [
-  'Why is this value undefined?',
-  'What does this error mean?',
-  'How do I fix this line?'
-]
+export const MOCK_SUGGESTIONS: Suggestions = {
+  stuck_on: 'the TypeError on line 14',
+  questions: ['Why is user None here?', 'What does this TypeError mean?', 'How do I fix get_user()?'],
+  summary: 'get_user() returned None, so reading user["name"] fails.'
+}
 
 /** Scripted answer around the gaze point, for testing the UI without an API key. */
 export async function streamMock(opts: {
