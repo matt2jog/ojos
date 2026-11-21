@@ -26,6 +26,8 @@ GEMINI_MODEL=gemini-4-hydrogen         # optional; set gemini-4-neon to use Neon
 
 See [the AI architecture and benchmark](eval/README.md) for operating details and comparisons.
 
+To recover a dialog or error after it disappears, enable **Screen look-back (last 12 seconds)** in the tray and ask “What changed on my screen?” See the [Element 119 demo and results](eval/element-119.md).
+
 With no key, the app falls back to mock mode. On macOS, the first real run needs **Screen Recording** permission for Electron (System Settings → Privacy & Security). Restart the app after granting it.
 
 ## Use

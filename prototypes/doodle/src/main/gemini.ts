@@ -105,7 +105,9 @@ Leave doodles out if you cannot locate the target.`
 export const LOOKBACK_QUESTION = 'What changed on my screen?'
 
 export function wantsLookback(question: string | undefined): boolean {
-  return /\b(?:what (?:just )?(?:changed|happened|disappeared)|just (?:now|before)|look back|look at (?:the )?earlier|previous error|error (?:flash|disappear|vanish)|(?:error|message) (?:was|did i see)|(?:screen|dialog|pop-?up) (?:show|disappear))\b/i.test(question ?? '')
+  const text = question?.trim() ?? ''
+  return /^what (?:changed|happened|disappeared)[?.!]*$/i.test(text) ||
+    /\b(?:what (?:just (?:changed|happened|disappeared)|(?:changed|happened) (?:on (?:the|my|this) screen|here))|just (?:now|before)|look back|look at (?:the )?earlier|previous error|error (?:flashed|disappeared|vanished)|(?:error|message) (?:was|did i see)|(?:screen|dialog|pop-?up) (?:showed|disappeared))\b/i.test(text)
 }
 
 function explainContents(opts: ExplainOptions): Content[] {
