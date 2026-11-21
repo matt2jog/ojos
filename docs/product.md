@@ -12,7 +12,7 @@ Longer term, Ojos aims to offer timely help across everyday desktop tasks, such 
 
 The participant works through Matt’s demo questions page, which mixes easy questions with deliberately hard or potentially unsolvable ones. For our part of the MVP, assume Matt’s side delivers a signal about when the participant got stuck and the related information it has available. Our job is to use relevant screen context to work out what the participant is doing and offer help with that task.
 
-The current UI direction is an OS-level popup that opens the Ojos desktop app. The app experience is still being scoped. For a question with missing information, useful help could mean explaining what is missing or asking a short follow-up. See the [UI draft](application/ui.md).
+The current UI direction is an OS-level popup that opens the Ojos help experience. The [overlay prototype](../prototypes/doodle/docs/overlay.md) implements it as a mascot with suggested questions and an answer panel on top of the task. The rest of the app experience is still being scoped. For a question with missing information, useful help could mean explaining what is missing or asking a short follow-up. See the [UI draft](application/ui.md).
 
 Matt’s side owns training, gaze estimation, and figuring out when to send the signal. Our side begins at the handoff and owns screen context, the assistant’s response, and the desktop experience. The shared protocol describes a timed interval and a separate stream of gaze estimates with validity and uncertainty. A replay event can stand in for a live handoff during development. See the [vision design](vision.md) and [shared protocol](protocol.md#vision-to-desktop).
 

@@ -1,6 +1,6 @@
 # Ojos overlay (desktop UI)
 
-This covers the desktop overlay: what appears on screen when the user might be stuck, how they ask for help without typing, and how the answer is shown. Alejandro owns it. Screen recording belongs to the recorder work, the confusion and gaze models to the ML work, and the Gemini backend to the AI-system work. This prototype only stubs those so the UI can be built and demoed. [Shared protocol](../../../docs/protocol.md) · [Prototype](../)
+This covers the desktop overlay: what appears on screen when the user might be stuck, how they ask for help without typing, and how the answer is shown. Alejandro owns it. Victor owns the screen recorder module and the Gemini backend in [`agentic_system/`](../../../agentic_system/README.md), and Matt owns the confusion and gaze models in [`models/`](../../../models/README.md). Wiring them into the app is part of the overlay work. This prototype stubs them for now so the UI can be built and demoed. [Shared protocol](../../../docs/protocol.md) · [Ownership](../../../docs/ownership.md) · [Prototype](../)
 
 ## Core rule
 
@@ -124,8 +124,17 @@ Each `draw` should come before the `say` that refers to it. Unknown or malformed
 
 - **Confusion events:** call the same path as the hotkey (`nudge()` in `src/main/index.ts`) when `interval.finalized` arrives. The model runs in Python, so the simplest bridge is a JSON line per event over stdout or a local socket. Agree on the format with the ML side.
 - **Gaze:** use the latest valid `gaze.sample` at event time, normalized to 0–1000. It's used to pick which paragraph or element the questions are about, and it drives the mascot's pupils. It never selects pills: the tracker is far too noisy for that, and choosing is the user's explicit opt-in.
-- **Screen capture:** replace `captureScreen()` with a frame (or the clip) from the recorder.
-- **Backend:** replace `suggestQuestions` and `streamGemini` in `src/main/gemini.ts` with calls to the backend using the contract above.
+- **Screen capture:** replace `captureScreen()` with Victor’s `Recorder` from [`agentic_system/capture/recorder.cjs`](../../../agentic_system/CAPTURE.md), run in Electron main. A hidden renderer feeds it frames of the selected display. On a confusion event, call `interval(event, nowUs)` (or `manual(nowUs)` for "Help me now") and `writeBundle(clip, folder)` to get `video.mp4`, `manifest.json` and `gaze.json`. Export needs FFmpeg on `PATH`.
+- **Backend, suggest step:** send the bundle to Victor’s [screen analysis backend](../../../agentic_system/assistant/README.md) and map its result onto `Suggestions`. Keep the direct Gemini call in `src/main/gemini.ts` as the fallback when the backend is unreachable or returns `insufficient_evidence`.
+
+  | Backend field | Overlay field |
+  | --- | --- |
+  | `suspected_confusion` | `stuck_on` |
+  | `possible_questions` | `questions` |
+  | `summary` | `summary` |
+
+  Locally the backend runs on loopback with a bearer token (`OJOS_LOCAL_TOKEN=ojos-demo python3 -m agentic_system.assistant serve`). `POST /v1/jobs` takes `manifest`, `gaze` and `video`, and the three fields arrive in the `job.analysis` event on `GET /v1/jobs/{job_id}/events`. `POST /v1/analyze` takes a `video` and a Matt-style `tracking` sidecar and returns the fields directly. `--provider scripted` tests the wire format without a key.
+- **Backend, explain step:** the backend has no equivalent of the streamed `title`/`say` answer yet, so `streamGemini` stays in the app for now. The backend’s `summary` and evidence are available to seed or replace it once we decide how to show them.
 
 ## Open items
 
