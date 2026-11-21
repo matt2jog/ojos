@@ -10,7 +10,7 @@ Stack: Electron + electron-vite + React + TypeScript. Works on macOS and Windows
 npm install
 npm run mock            # canned questions and answer, no key needed
 npm run mock:doodles    # same, plus live doodles
-npm run dev             # real Gemini (two models: suggest, then explain)
+npm run dev             # live Gemini, one call per nudge or answer
 npm run dev:doodles
 ```
 
@@ -19,8 +19,10 @@ For `dev`, create `.env` here (it's gitignored):
 ```
 GEMINI_API_KEY=...
 GEMINI_SUGGEST_MODEL=gemini-4-hydrogen   # optional
-GEMINI_MODEL=gemini-4-neon               # optional; use gemini-4-hydrogen if your key lacks Neon
+GEMINI_MODEL=gemini-4-hydrogen         # optional; set gemini-4-neon to use Neon for answers
 ```
+
+See [the AI architecture and benchmark](eval/README.md) for operating details and comparisons.
 
 With no key, the app falls back to mock mode. On macOS, the first real run needs **Screen Recording** permission for Electron (System Settings → Privacy & Security). Restart the app after granting it.
 
