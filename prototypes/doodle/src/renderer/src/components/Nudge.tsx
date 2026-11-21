@@ -115,42 +115,36 @@ export function Nudge({ visible, suggestion, mac, onPick, onHover }: Props): Rea
         onHover(false)
       }}
     >
-      {/* Speech bubble: what Ojos thinks you're stuck on */}
-      <div className="bubble" key={suggestion ? 'ready' : 'loading'}>
+      <div className="nudge-questions">
         {suggestion === null ? (
-          <span className="q-shimmer">Hmm, let me take a look…</span>
-        ) : suggestion.stuck_on ? (
-          <>
-            Looks like you&apos;re stuck on <strong>{suggestion.stuck_on}</strong>. Want a hand?
-          </>
+          <div className="q-pill q-loading" style={{ animationDelay: '0.45s' }}>
+            <span className="q-shimmer">Thinking of what you might ask…</span>
+          </div>
         ) : (
-          <>Need a hand with this?</>
+          <>
+            {suggestion.questions.map((q, i) => (
+              <button
+                key={q}
+                className="q-pill"
+                style={{ animationDelay: `${0.12 + i * 0.07}s` }}
+                onClick={() => pick(q)}
+              >
+                <span className="q-text">{q}</span>
+                <kbd>{key(i)}</kbd>
+              </button>
+            ))}
+            <button
+              className="q-pill q-secondary"
+              style={{ animationDelay: `${0.12 + suggestion.questions.length * 0.07}s` }}
+              onClick={() => pick()}
+            >
+              <span className="q-text">
+                {suggestion.questions.length ? 'Something else? Just explain' : 'Explain what I’m looking at'}
+              </span>
+            </button>
+          </>
         )}
       </div>
-      {suggestion !== null && (
-        <div className="nudge-questions">
-          {suggestion.questions.map((q, i) => (
-            <button
-              key={q}
-              className="q-pill"
-              style={{ animationDelay: `${0.12 + i * 0.07}s` }}
-              onClick={() => pick(q)}
-            >
-              <span className="q-text">{q}</span>
-              <kbd>{key(i)}</kbd>
-            </button>
-          ))}
-          <button
-            className="q-pill q-secondary"
-            style={{ animationDelay: `${0.12 + suggestion.questions.length * 0.07}s` }}
-            onClick={() => pick()}
-          >
-            <span className="q-text">
-              {suggestion.questions.length ? 'Something else? Just explain' : 'Explain what I’m looking at'}
-            </span>
-          </button>
-        </div>
-      )}
       <button
         ref={pillRef}
         className="nudge-pill"
