@@ -10,8 +10,9 @@ import { readFileSync, writeFileSync } from 'fs'
 import { streamGemini, suggest } from './gemini'
 import { MOCK_SUGGESTIONS, streamMock } from './mock'
 import type { Cmd, Gaze, Suggestions, Turn } from '../shared/commands'
-import { openSetup, registerSetupIpc, selectedDisplay, setupDone } from './setup'
-import { liveGaze, startVision } from './vision'
+import { openSetup, registerSetupIpc, selectedDisplay, setupDone, storeSet } from './setup'
+import { liveGaze, reloadVision, sensitivity, startVision } from './vision'
+import { LOG_FILE } from './log'
 import { ensureRendererUrl } from './serve'
 
 // Load .env without extra deps.
@@ -123,10 +124,23 @@ function setPickKeys(on: boolean): void {
 }
 
 let paused = false
+// Hidden from the tray or dock: Ojos keeps running but shows nothing and offers no help,
+// until the user shows it again or asks for help themselves.
+let hidden = false
+
+function setHidden(on: boolean): void {
+  hidden = on
+  if (on) {
+    dismiss()
+    win.hide()
+  } else win.showInactive()
+  refreshMenus()
+}
 
 /** Confusion detected: show the mascot and start guessing the question. Never explains on its own. */
 async function nudge(at?: Gaze | null): Promise<void> {
   if (paused) return
+  if (hidden) setHidden(false) // only reached when the user asked; detected confusion is dropped while hidden
   const myRun = ++suggestRun
   const gaze = at ?? currentGaze()
   const png = MOCK ? null : captureScreen()
@@ -210,6 +224,7 @@ async function explain(question: string | undefined, typed = false): Promise<voi
 /** Open the chat box without a confusion event (tray or hotkey). */
 function openChat(): void {
   if (paused) return
+  if (hidden) setHidden(false)
   if (!convo && !pending) pending = { gaze: currentGaze(), png: MOCK ? null : captureScreen(), questions: [] }
   win.webContents.send('chat')
 }
@@ -251,27 +266,34 @@ let tray: Tray | null = null
 
 function refreshTray(): void {
   if (!tray) return
-  tray.setToolTip(paused ? 'Ojos (paused)' : 'Ojos')
+  tray.setToolTip(hidden ? 'Ojos (hidden)' : 'Ojos')
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: paused ? 'Ojos is paused' : 'Ojos is watching for confusion', enabled: false },
+      { label: hidden ? 'Ojos is hidden and not watching' : 'Ojos is watching for confusion', enabled: false },
       { type: 'separator' },
       { label: 'Help me with this now', accelerator: 'CommandOrControl+Shift+O', click: () => void nudge() },
       { label: 'Chat with Ojos', accelerator: 'CommandOrControl+Shift+J', click: openChat },
-      {
-        label: paused ? 'Resume' : 'Pause',
-        click: () => {
-          paused = !paused
-          if (paused) dismiss()
-          refreshTray()
-        }
-      },
+      { label: hidden ? 'Show Ojos' : 'Hide Ojos', click: () => setHidden(!hidden) },
+      { label: 'Settings…', accelerator: 'CommandOrControl+,', click: () => runSetup('settings') },
       { label: 'Recalibrate eyes…', click: () => runSetup('calibrate') },
       { label: 'Run setup again…', click: () => runSetup('welcome') },
       { type: 'separator' },
       { label: 'Quit Ojos', accelerator: 'CommandOrControl+Shift+Q', click: () => app.quit() }
     ])
   )
+}
+
+const dockMenu = (): Menu =>
+  Menu.buildFromTemplate([
+    { label: 'Settings…', click: () => runSetup('settings') },
+    { label: 'Recalibrate eyes…', click: () => runSetup('calibrate') },
+    { label: 'Help me with this now', click: () => void nudge() },
+    { label: hidden ? 'Show Ojos' : 'Hide Ojos', click: () => setHidden(!hidden) }
+  ])
+
+function refreshMenus(): void {
+  refreshTray()
+  if (process.platform === 'darwin') app.dock?.setMenu(dockMenu())
 }
 
 function createTray(): void {
@@ -293,6 +315,7 @@ function runSetup(startAt: string): void {
       if (win && !win.isDestroyed() && String(selectedDisplay().id) !== String(display.id)) {
         win.destroy()
         createOverlay()
+        if (hidden) win.hide()
         win.webContents.once('did-finish-load', () => win.webContents.send('ready', `${modeLabel()}|${modKey()}`))
       }
       refreshTray()
@@ -314,6 +337,21 @@ const modeLabel = (): string => (MOCK ? 'MOCK mode' : `${SUGGEST_MODEL} -> ${EXP
 
 registerSetupIpc()
 
+ipcMain.handle('settings:get', () => ({
+  mock: MOCK,
+  suggestModel: SUGGEST_MODEL,
+  explainModel: EXPLAIN_MODEL,
+  sensitivity: sensitivity(),
+  screenPermission: process.platform === 'darwin' ? systemPreferences.getMediaAccessStatus('screen') : 'granted',
+  cameraPermission: process.platform === 'darwin' ? systemPreferences.getMediaAccessStatus('camera') : 'granted',
+  logFile: LOG_FILE,
+  platform: process.platform
+}))
+ipcMain.handle('settings:sensitivity', (_e, high: number) => {
+  storeSet('trigger.high', String(Math.min(0.95, Math.max(0.3, high))))
+  reloadVision()
+})
+
 // Dev aids: isolated data folder, and setup screenshots (--setup-step=<step> --autopilot
 // --snapshot-setup=<file.png> --snapshot-delay=<ms>).
 if (process.env.OJOS_USER_DATA) app.setPath('userData', process.env.OJOS_USER_DATA)
@@ -331,7 +369,15 @@ app.on('window-all-closed', () => {
 })
 
 app.whenReady().then(async () => {
-  if (process.platform === 'darwin') app.dock?.hide()
+  // Dock icon: clicking it opens Settings; its right-click menu also offers Quit.
+  if (process.platform === 'darwin' && app.dock) {
+    app.dock.setIcon(nativeImage.createFromPath(join(app.getAppPath(), 'resources', 'icon.png')))
+    app.dock.setMenu(dockMenu())
+    const startedAt = Date.now()
+    app.on('activate', () => {
+      if (Date.now() - startedAt > 3000) runSetup('settings') // ignore the activation at launch
+    })
+  }
   await ensureRendererUrl()
   createOverlay()
   createTray()
@@ -340,7 +386,7 @@ app.whenReady().then(async () => {
   let lastNudgeAt = 0
   startVision({
     onInterval: (gaze) => {
-      if (Date.now() - lastNudgeAt < 12_000) return
+      if (hidden || Date.now() - lastNudgeAt < 12_000) return
       lastNudgeAt = Date.now()
       void nudge(gaze)
     }

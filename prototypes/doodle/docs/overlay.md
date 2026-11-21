@@ -35,7 +35,7 @@ Shown on first launch, from the tray ("Run setup again…", "Recalibrate eyes…
 3. **Display:** choose which screen to record and calibrate. Skipped when there's only one.
 4. **Calibration:** full screen on that display. It runs on `EnsembleCalibration` from `models/vision`: 9 fit targets, then 5 validation targets. Each target is marked shown only after it's painted, held through `collectUntilUs`, then given 150 ms for late observations before `finishTarget`. Esc skips.
 5. **Results:** per-model pass/fail with typical error against the limit. Passing profiles are saved with `saveTrackerProfile`, along with the calibration geometry. Retry, or continue without gaze (confusion still works).
-6. **Done:** a three-line "how it works", then the app lives in the menu bar or tray (Help me now, Pause/Resume, Recalibrate, Quit).
+6. **Done:** a three-line "how it works", then the app lives in the menu bar or tray (Help me now, Hide/Show Ojos, Settings, Recalibrate, Quit). "Hide Ojos" takes the overlay off screen and stops it offering help while the app keeps running; "Show Ojos", "Help me with this now" or the chat shortcut bring it back. On macOS the same items are in the Dock icon's right-click menu.
 
 Storage is a JSON file in the app's user-data folder (`ojos-store.json`). It holds settings, the chosen display and calibration profiles, and never leaves the laptop.
 

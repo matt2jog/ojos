@@ -4,8 +4,9 @@ import type { DisplayInfo, PermissionKind, PermissionState } from '../../../shar
 import type { VisionStatus } from '../../../shared/vision'
 import { Logo } from '../components/Logo'
 import { Calibration, type CalibrationOutcome } from './Calibration'
+import { Settings } from './Settings'
 
-type Step = 'welcome' | 'permissions' | 'display' | 'calibrate' | 'result' | 'done'
+type Step = 'welcome' | 'permissions' | 'display' | 'calibrate' | 'result' | 'done' | 'settings'
 const ORDER: Step[] = ['welcome', 'permissions', 'display', 'calibrate', 'done']
 const TRACKER_NAMES: Record<Tracker, string> = { model1: 'Eye model 1 · WebEyeTrack', model2: 'Eye model 2 · ETH-XGaze' }
 const AUTOPILOT = location.search.includes('autopilot')
@@ -63,7 +64,10 @@ function Progress({ step }: { step: Step }): React.JSX.Element {
 
 export function SetupApp(): React.JSX.Element {
   const hash = location.hash.replace('#', '')
-  const initial: Step = hash === 'calibrate' ? 'display' : ORDER.includes(hash as Step) ? (hash as Step) : 'welcome'
+  const initial: Step =
+    hash === 'calibrate' ? 'display' : hash === 'settings' ? 'settings' : ORDER.includes(hash as Step) ? (hash as Step) : 'welcome'
+  // Opened as Settings (or straight to recalibration): return there instead of the first-run ending.
+  const fromSettings = useRef(hash === 'settings' || hash === 'calibrate')
   const [step, setStep] = useState<Step>(initial)
   const [platform, setPlatform] = useState<string>('darwin')
   const [perms, setPerms] = useState<Record<PermissionKind, PermissionState> | null>(null)
@@ -197,8 +201,22 @@ export function SetupApp(): React.JSX.Element {
       {step !== 'calibrate' && (
         <header className="setup-head">
           <Logo />
-          <Progress step={step} />
+          {step !== 'settings' && !fromSettings.current && <Progress step={step} />}
         </header>
+      )}
+
+      {step === 'settings' && (
+        <Settings
+          vision={vision}
+          onRecalibrate={() => {
+            fromSettings.current = true
+            setStep('display')
+          }}
+          onRunSetup={() => {
+            fromSettings.current = false
+            setStep('welcome')
+          }}
+        />
       )}
 
       {step === 'welcome' && (
@@ -346,8 +364,8 @@ export function SetupApp(): React.JSX.Element {
             >
               {skipped ? 'Calibrate now' : 'Try again'}
             </button>
-            <button className="btn" onClick={() => setStep('done')}>
-              Continue
+            <button className="btn" onClick={() => setStep(fromSettings.current ? 'settings' : 'done')}>
+              {fromSettings.current ? 'Done' : 'Continue'}
             </button>
           </footer>
         </main>

@@ -14,6 +14,8 @@ npm run dev             # real Gemini (two models: suggest, then explain)
 npm run dev:doodles
 ```
 
+To open Ojos without a terminal on macOS, run `npm run app` once. It builds the app and puts a double-clickable `Ojos.app` on the Desktop, which you can drag to the Dock. Re-run it after code changes. `npm start` builds and runs the same thing from a terminal, on macOS or Windows.
+
 For `dev`, create `.env` here (it's gitignored):
 
 ```
@@ -34,7 +36,7 @@ With no key, the app falls back to mock mode. On macOS, the first real run needs
 | Cmd+Shift+X | Dismiss |
 | Cmd+Shift+Q | Quit |
 
-First launch opens the setup window (permissions, display, eye calibration). Re-run it with `npm run dev -- --setup` or from the menu-bar icon.
+First launch opens the setup window (permissions, display, eye calibration). Re-run it with `npm run dev -- --setup` or from the menu-bar icon. The menu-bar icon also has **Hide Ojos**, which takes the overlay off screen and stops it offering help without quitting.
 
 Drag the mascot by its face to move it. It remembers where you left it.
 

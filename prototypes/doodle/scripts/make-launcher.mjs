@@ -1,7 +1,7 @@
 // Builds the app and creates a double-clickable Ojos.app on the Desktop (macOS).
 // The launcher starts the built app through LaunchServices: no terminal, no dev server.
 import { execFileSync } from 'node:child_process'
-import { existsSync, rmSync } from 'node:fs'
+import { copyFileSync, existsSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -19,4 +19,10 @@ execFileSync('npx', ['electron-vite', 'build'], { cwd: appDir, stdio: 'inherit',
 const script = `do shell script "env -u ELECTRON_RUN_AS_NODE open -n -a " & quoted form of ${JSON.stringify(electronApp)} & " --args " & quoted form of ${JSON.stringify(appDir)}`
 if (existsSync(target)) rmSync(target, { recursive: true })
 execFileSync('osacompile', ['-o', target, '-e', script])
+// Give the launcher the Ojos icon, then nudge Finder to refresh it.
+const icon = join(appDir, 'resources', 'icon.icns')
+if (existsSync(icon)) {
+  copyFileSync(icon, join(target, 'Contents/Resources/applet.icns'))
+  execFileSync('touch', [target])
+}
 console.log(`Created ${target}. Double-click it to start Ojos.`)

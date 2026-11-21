@@ -99,7 +99,7 @@ export function openSetup(opts: { onDone(): void; startAt?: string; query?: stri
     minWidth: 720,
     minHeight: 560,
     show: false,
-    title: 'Ojos setup',
+    title: opts.startAt === 'settings' ? 'Ojos settings' : 'Ojos setup',
     backgroundColor: '#0e0f12',
     titleBarStyle: mac ? 'hiddenInset' : 'default',
     autoHideMenuBar: true,
@@ -181,6 +181,8 @@ export function registerSetupIpc(): void {
   }))
   ipcMain.handle('setup:select-display', (_e, id: string) => storeSet('display.id', id))
   ipcMain.handle('setup:fullscreen', (_e, displayId: string | null) => setFullscreenOn(displayId))
+  ipcMain.handle('setup:close', () => setupWin?.close())
+  ipcMain.handle('app:quit', () => app.quit())
   ipcMain.handle('setup:finish', () => {
     storeSet('setup.done', '1')
     setupWin?.close()

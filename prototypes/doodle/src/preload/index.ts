@@ -28,6 +28,10 @@ const setup: SetupApi = {
   selectDisplay: (id) => ipcRenderer.invoke('setup:select-display', id),
   fullscreen: (id) => ipcRenderer.invoke('setup:fullscreen', id),
   finish: () => ipcRenderer.invoke('setup:finish'),
+  close: () => ipcRenderer.invoke('setup:close'),
+  settings: () => ipcRenderer.invoke('settings:get'),
+  setSensitivity: (high) => ipcRenderer.invoke('settings:sensitivity', high),
+  quit: () => ipcRenderer.invoke('app:quit'),
   store: {
     getItem: (key) => ipcRenderer.sendSync('store:get', key),
     setItem: (key, value) => void ipcRenderer.sendSync('store:set', key, value),
