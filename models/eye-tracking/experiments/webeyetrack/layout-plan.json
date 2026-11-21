@@ -1,0 +1,4 @@
+[
+  {"id":"original-layout","name":"original","variant":"both","height":720,"rate":30,"windowName":"calibration","matrixLayout":"corrected"},
+  {"id":"repeat-layout","name":"repeat","variant":"both","height":720,"rate":30,"windowName":"calibration","matrixLayout":"corrected"}
+]

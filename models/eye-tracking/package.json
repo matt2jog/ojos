@@ -1,0 +1,19 @@
+{
+  "name": "@ojos/eye-tracking",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "build": "node scripts/build.mjs",
+    "evaluate": "node offline/evaluate.mjs",
+    "verify:browser": "node offline/browser-smoke.mjs"
+  },
+  "dependencies": {
+    "@mediapipe/tasks-vision": "0.10.21"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12",
+    "playwright": "1.56.1"
+  }
+}
