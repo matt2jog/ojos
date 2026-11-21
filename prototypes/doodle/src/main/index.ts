@@ -1,19 +1,18 @@
 import { app, BrowserWindow, globalShortcut, screen, ipcMain, Menu, nativeImage, powerMonitor, Tray, type Display } from 'electron'
 import { join } from 'path'
+import { randomUUID } from 'node:crypto'
 import { readFile, rm } from 'node:fs/promises'
 import { analyzeBundle } from '@assistant'
-import { streamGemini } from './gemini'
-import type { Cmd, Gaze } from '../shared/commands'
+import type { Gaze } from '../shared/commands'
 import type { Interval } from '../shared/capture'
-import { calibrationDisplay, configuredDisplay, openSetup, registerSetupIpc, selectedDisplay, setupContents, setupDone } from './setup'
+import { calibrationDisplay, configuredDisplay, openSetup, registerSetupIpc, selectedDisplay, setupContents, setupDone, storeGet, storeSet } from './setup'
 import { RecordingService } from './capture/service'
-import { assistant, stopAssistant } from './assistant'
+import { assistant, chatHistory, stopAssistant, streamChatTurn } from './assistant'
 import { configureRuntime } from './runtime'
 
 if (process.env.OJOS_USER_DATA) app.setPath('userData', process.env.OJOS_USER_DATA)
 if (!app.requestSingleInstanceLock()) app.quit()
 configureRuntime()
-const EXPLAIN_MODEL = process.env.GEMINI_MODEL || 'gemini-4-neon' // smart: answers it
 const DOODLES = process.argv.includes('--doodles') || process.env.DOODLES === '1'
 const PICK_KEYS = ['Alt+1', 'Alt+2', 'Alt+3']
 
@@ -21,7 +20,9 @@ let win: BrowserWindow
 let display: Display
 let runId = 0
 let capture: RecordingService | undefined
-let request: AbortController | undefined
+let nudgeRequest: AbortController | undefined
+let chatRequest: AbortController | undefined
+let chatId: string | undefined
 const center: Gaze = { x: 500, y: 500 } // placement only, never sent as gaze evidence
 
 function createOverlay(): void {
@@ -47,7 +48,9 @@ function createOverlay(): void {
   else win.loadFile(join(__dirname, '../renderer/index.html'))
 }
 
-let pending: { gaze?: Gaze; still: string; questions: string[] } | null = null
+let pending: {
+  gaze?: Gaze; still: string; questions: string[]; summary?: string
+} | null = null
 
 function setPickKeys(on: boolean): void {
   for (const k of PICK_KEYS) globalShortcut.unregister(k)
@@ -55,7 +58,7 @@ function setPickKeys(on: boolean): void {
   PICK_KEYS.forEach((k, i) =>
     globalShortcut.register(k, () => {
       const q = pending?.questions[i]
-      if (q) void explain(q)
+      if (q) void ask(q, true)
     })
   )
 }
@@ -64,10 +67,10 @@ let paused = false
 
 /** Confusion detected: show the mascot and start guessing the question. Never explains on its own. */
 async function nudge(interval?: Interval): Promise<void> {
-  if (paused || !capture?.isRecording()) return
-  request?.abort()
-  request = new AbortController()
-  const signal = AbortSignal.any([request.signal, AbortSignal.timeout(120_000)])
+  if (paused || chatRequest || !capture?.isRecording()) return
+  nudgeRequest?.abort()
+  nudgeRequest = new AbortController()
+  const signal = AbortSignal.any([nudgeRequest.signal, AbortSignal.timeout(120_000)])
   const myRun = ++runId
   pending = null
   setPickKeys(false)
@@ -91,7 +94,8 @@ async function nudge(interval?: Interval): Promise<void> {
     const result = await analyzeBundle({ ...connection, manifest, gaze, video, signal })
     if (myRun !== runId || !pending) return
     pending.questions = result.possible_questions
-    win.webContents.send('suggest', { stuck_on: result.suspected_confusion, questions: result.possible_questions, summary: result.summary })
+    pending.summary = result.summary
+    win.webContents.send('suggest', { stuck_on: result.suspected_confusion ?? '', questions: result.possible_questions, summary: result.summary })
   } catch (e) {
     if (signal.aborted || myRun !== runId) return
     console.error('suggest failed:', e)
@@ -101,62 +105,101 @@ async function nudge(interval?: Interval): Promise<void> {
   }
 }
 
-/** User picked a question (or clicked the mascot): stream the answer. Replaces any open answer. */
-async function explain(question?: string): Promise<void> {
-  if (!pending || paused) return
-  request?.abort()
-  request = new AbortController()
-  const myRun = ++runId
-  const isCurrent = (): boolean => myRun === runId
-  const onCmd = (cmd: Cmd): void => {
-    if (isCurrent()) win.webContents.send('cmd', cmd)
-  }
-  setPickKeys(false)
-
-  const { gaze, still } = pending
-  pending = null
-  win.webContents.send('reset', { gaze: gaze ?? center, model: EXPLAIN_MODEL })
+/** Taking a fresh screen suggestion opens a chat. Typed follow-ups reuse its ID. */
+async function ask(question: string | undefined, picked = false): Promise<void> {
+  if (paused || chatRequest || (question !== undefined && typeof question !== 'string')) return
+  const message = question?.trim() || 'Explain what I’m looking at.'
+  if (message.length > 8000) return
+  const evidence = (!chatId || picked) && pending ? pending : undefined
+  const fresh = !chatId || Boolean(evidence)
+  const id = fresh ? randomUUID() : chatId!
+  const controller = new AbortController()
+  chatId = id
+  chatRequest = controller
+  const current = (): boolean => chatRequest === controller && !win.isDestroyed()
+  if (nudgeRequest) clearNudge()
+  win.webContents.send('reset', { gaze: evidence?.gaze, question: message, fresh })
 
   try {
-    const apiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY
-    if (!apiKey) throw new Error('Set GEMINI_API_KEY to use the live question explainer.')
-    await streamGemini({
-      apiKey,
-      model: EXPLAIN_MODEL,
-      jpegBase64: still,
-      gaze,
-      question,
-      doodles: DOODLES,
-      isCurrent,
-      onCmd,
-      signal: request.signal
+    const answer = await streamChatTurn({
+      chatId: id, turnId: randomUUID(), message, screenContext: evidence?.summary, jpeg: evidence?.still,
+      doodles: DOODLES && Boolean(evidence?.still),
+      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(125_000)])
+    }, (event) => {
+      if (!current()) return
+      if (event.kind === 'doodle') win.webContents.send('cmd', event.command)
+      else win.webContents.send(event.kind === 'status' ? 'chat-status' : 'chat-delta', event.text)
     })
-    if (isCurrent()) win.webContents.send('done')
+    if (current()) {
+      storeSet('chat.lastId', id)
+      refreshTray()
+      win.webContents.send('chat-answer', answer)
+      win.webContents.send('done')
+    }
   } catch (e) {
-    console.error(e)
-    if (isCurrent()) win.webContents.send('error', String((e as Error).message ?? e))
+    if (current()) win.webContents.send('error', String((e as Error).message ?? e))
+  } finally {
+    if (chatRequest === controller) chatRequest = undefined
+  }
+}
+
+function clearNudge(): void {
+  runId++
+  nudgeRequest?.abort()
+  nudgeRequest = undefined
+  pending = null
+  setPickKeys(false)
+}
+
+async function openLastChat(): Promise<void> {
+  const id = storeGet('chat.lastId')
+  if (paused || chatRequest || !id || !/^[a-f0-9-]{36}$/.test(id)) return
+  const controller = new AbortController()
+  chatRequest = controller
+  clearNudge()
+  try {
+    const turns = await chatHistory(id, AbortSignal.any([controller.signal, AbortSignal.timeout(25_000)]))
+    if (chatRequest !== controller || win.isDestroyed()) return
+    chatId = id
+    win.webContents.send('chat-history', turns)
+    win.webContents.send('chat')
+  } catch (error) {
+    if (chatRequest === controller && !win.isDestroyed()) {
+      win.webContents.send('chat')
+      win.webContents.send('error', (error as Error).message)
+    }
+  } finally {
+    if (chatRequest === controller) chatRequest = undefined
   }
 }
 
 function dismiss(): void {
-  runId++
-  request?.abort()
-  request = undefined
-  pending = null
-  setPickKeys(false)
-  if (win && !win.isDestroyed()) win.webContents.send('dismiss')
+  clearNudge()
+  chatRequest?.abort()
+  chatRequest = undefined
+  chatId = undefined
+  if (win && !win.isDestroyed()) {
+    win.setFocusable(false)
+    win.webContents.send('dismiss')
+  }
 }
 
-ipcMain.on('dismiss', dismiss)
-ipcMain.on('accept', (_e, question?: string) => void explain(question))
-ipcMain.on('nudge-hidden', () => {
-  // Ignored (timed out): forget it. Doesn't touch an answer that's already open.
-  if (pending) request?.abort()
-  pending = null
-  setPickKeys(false)
+const fromOverlay = (event: Electron.IpcMainEvent): boolean =>
+  Boolean(win && !win.isDestroyed() && event.senderFrame === win.webContents.mainFrame)
+ipcMain.on('dismiss', (event) => { if (fromOverlay(event)) dismiss() })
+ipcMain.on('accept', (event, question?: string) => { if (fromOverlay(event) && (pending || chatId)) void ask(question, true) })
+ipcMain.on('ask', (event, message: string) => {
+  if (fromOverlay(event) && typeof message === 'string' && message.trim()) void ask(message)
 })
-ipcMain.on('mouse', (_e, overUi: boolean) => win.setIgnoreMouseEvents(!overUi, { forward: true }))
-
+ipcMain.on('nudge-hidden', (event) => { if (fromOverlay(event)) clearNudge() })
+ipcMain.on('mouse', (event, overUi: boolean) => {
+  if (fromOverlay(event)) win.setIgnoreMouseEvents(!overUi, { forward: true })
+})
+ipcMain.on('focus', (event, focus: boolean) => {
+  if (!fromOverlay(event) || setupContents()) return
+  win.setFocusable(Boolean(focus))
+  if (focus) win.focus()
+})
 // ---------- menu-bar / tray ----------
 let tray: Tray | null = null
 
@@ -168,6 +211,7 @@ function refreshTray(): void {
       { label: paused ? 'Ojos is paused' : 'Ojos is watching for confusion', enabled: false },
       { type: 'separator' },
       { label: 'Help me with this now', accelerator: 'CommandOrControl+Shift+O', click: () => void nudge() },
+      { label: 'Open last chat', enabled: !paused && Boolean(storeGet('chat.lastId')), click: () => void openLastChat() },
       {
         label: paused ? 'Resume' : 'Pause',
         click: () => {
@@ -226,7 +270,7 @@ function runSetup(startAt: string): void {
 }
 
 const modKey = (): string => (process.platform === 'darwin' ? 'Cmd' : 'Ctrl')
-const modeLabel = (): string => `Live clip analysis → ${EXPLAIN_MODEL}`
+const modeLabel = (): string => 'Live clip analysis and ADK chat'
 
 registerSetupIpc()
 
@@ -342,7 +386,8 @@ app.whenReady().then(() => {
 })
 
 app.on('before-quit', () => {
-  request?.abort()
+  nudgeRequest?.abort()
+  chatRequest?.abort()
   capture?.close()
   stopAssistant()
 })
