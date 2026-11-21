@@ -4,15 +4,16 @@
 // user can follow up by typing or picking another suggestion.
 // Manual nudges can use the mouse pointer when tracked gaze is unavailable.
 import './log'
-import { app, BrowserWindow, globalShortcut, screen, desktopCapturer, ipcMain, Menu, nativeImage, shell, systemPreferences, Tray, type Display } from 'electron'
+import { app, BrowserWindow, globalShortcut, screen, desktopCapturer, ipcMain, Menu, nativeImage, powerMonitor, shell, systemPreferences, Tray, type Display } from 'electron'
 import { join } from 'path'
 import { readFileSync, writeFileSync } from 'fs'
-import { DEFAULT_GEMINI_MODEL, MAX_HISTORY_TURNS, streamGemini, suggest, type GazeSource } from './gemini'
+import { DEFAULT_GEMINI_MODEL, LOOKBACK_MODEL, LOOKBACK_QUESTION, MAX_HISTORY_TURNS, streamGemini, suggest, wantsLookback, type GazeSource } from './gemini'
 import { MOCK_SUGGESTIONS, streamMock } from './mock'
 import type { Cmd, Gaze, Suggestions, Turn } from '../shared/commands'
 import { openSetup, registerSetupIpc, selectedDisplay, setupDone } from './setup'
 import { liveGaze, startVision } from './vision'
 import { ensureRendererUrl } from './serve'
+import { ScreenHistory } from './screen-history'
 
 // Load .env without extra deps.
 try {
@@ -32,6 +33,12 @@ const PICK_KEYS = ['Alt+1', 'Alt+2', 'Alt+3']
 
 let win: BrowserWindow
 let display: Display
+let lookbackEnabled = !MOCK && (process.argv.includes('--lookback') || process.env.OJOS_LOOKBACK === '1')
+let historyBusy = false
+let historyBlocked = false
+let historyEpoch = 0
+let historyTimer: ReturnType<typeof setInterval> | undefined
+const screenHistory = new ScreenHistory(bytes => nativeImage.createFromBuffer(bytes))
 // A nudge can be replaced without interrupting an open answer.
 let suggestionRequest: AbortController | undefined
 let answerRequest: AbortController | undefined
@@ -74,24 +81,58 @@ function screenBlocked(e: unknown): string | null {
   return 'Ojos needs Screen Recording permission. Turn on "Electron" in System Settings > Privacy & Security > Screen & System Audio Recording, then quit and reopen Ojos.'
 }
 
-// Stand-in for the recorder teammate's capture: one screenshot of the overlay's display.
-async function captureScreen(): Promise<string> {
-  const scale = Math.min(1, 1920 / display.size.width)
+async function displayImage(target: Display, selectedOnly: boolean) {
+  const scale = Math.min(1, 1920 / target.size.width)
   const sources = await desktopCapturer.getSources({
     types: ['screen'],
     thumbnailSize: {
-      width: Math.round(display.size.width * scale),
-      height: Math.round(display.size.height * scale)
+      width: Math.round(target.size.width * scale),
+      height: Math.round(target.size.height * scale)
     }
   })
-  const src = sources.find((s) => s.display_id === String(display.id)) ?? sources[0]
-  const access = process.platform === 'darwin' ? systemPreferences.getMediaAccessStatus('screen') : 'granted'
-  if (!src || src.thumbnail.isEmpty()) {
-    throw new Error(`Screen capture returned nothing (Screen Recording permission: ${access})`)
+  const matching = sources.find(source => source.display_id === String(target.id))
+  const displays = screen.getAllDisplays()
+  const soleSource = sources.length === 1 && displays.length === 1 && displays[0].id === target.id
+    ? sources[0] : undefined
+  const source = matching ?? (selectedOnly ? soleSource : sources[0])
+  if (!source || source.thumbnail.isEmpty()) throw new Error('Screen capture returned nothing')
+  return source.thumbnail
+}
+
+async function captureScreen(): Promise<string> {
+  return (await displayImage(display, lookbackEnabled)).toPNG().toString('base64')
+}
+
+function forgetLookback(): void {
+  historyEpoch++
+  screenHistory.clear()
+}
+
+async function sampleLookback(): Promise<void> {
+  if (!lookbackEnabled || paused || historyBusy || historyBlocked) return
+  if (process.platform === 'darwin' && systemPreferences.getMediaAccessStatus('screen') !== 'granted') {
+    forgetLookback()
+    return
   }
-  const png = src.thumbnail.toPNG()
-  console.log(`[capture] ${src.thumbnail.getSize().width}x${src.thumbnail.getSize().height}, ${png.length} bytes, screen permission ${access}`)
-  return png.toString('base64')
+  historyBusy = true
+  const epoch = historyEpoch
+  const startedAt = performance.now()
+  try {
+    const target = screen.getAllDisplays().find(candidate => candidate.id === display.id)
+    if (!target) return
+    const image = await displayImage(target, true)
+    if (epoch === historyEpoch) screenHistory.remember(image, startedAt)
+  } catch {
+    // Transient capture failures leave ordinary screenshot help available.
+  } finally {
+    historyBusy = false
+  }
+}
+
+function earlierFrames(pngBase64: string, observedAt: number) {
+  if (!lookbackEnabled || paused || historyBlocked) return []
+  const image = nativeImage.createFromBuffer(Buffer.from(pngBase64, 'base64'))
+  return screenHistory.evidence(image, observedAt, performance.now())
 }
 
 type Focus = { gaze: Gaze; gazeSource: GazeSource }
@@ -111,7 +152,7 @@ function currentFocus(): Focus {
 }
 
 // A picked suggestion uses the screen and focus from the nudge.
-type PendingNudge = { focus: Focus; png: Promise<string> | null; questions: string[] }
+type PendingNudge = { focus: Focus; png: Promise<string> | null; capturedAt: number; questions: string[] }
 let pending: PendingNudge | null = null
 
 function setPickKeys(on: boolean): void {
@@ -134,8 +175,9 @@ async function nudge(at?: Gaze | null): Promise<void> {
   const request = new AbortController()
   suggestionRequest = request
   const focus: Focus = at === undefined ? currentFocus() : at ? { gaze: at, gazeSource: 'tracked' } : NO_FOCUS
+  const capturedAt = performance.now()
   const png = MOCK ? null : captureScreen()
-  const nudgeState: PendingNudge = { focus, png, questions: [] }
+  const nudgeState: PendingNudge = { focus, png, capturedAt, questions: [] }
   pending = nudgeState
   win.webContents.send('nudge', focus.gaze)
   setPickKeys(true)
@@ -152,6 +194,10 @@ async function nudge(at?: Gaze | null): Promise<void> {
         ...focus,
         signal: request.signal
       })
+      if (!request.signal.aborted && earlierFrames(pngBase64, capturedAt).length) {
+        const questions = suggestions.questions.filter(question => !wantsLookback(question))
+        suggestions.questions = [...questions.slice(0, 2), LOOKBACK_QUESTION]
+      }
     } else {
       suggestions = await new Promise<Suggestions>((resolve) => setTimeout(() => resolve(MOCK_SUGGESTIONS), 900))
     }
@@ -182,7 +228,9 @@ async function explain(input: string | undefined, typed = false): Promise<void> 
 
   const question = typeof input === 'string' ? input.trim().slice(0, 2000) || undefined : undefined
   const focus = (!typed && pending?.focus) || currentFocus()
-  const png = MOCK ? null : ((!typed && pending?.png) || captureScreen())
+  const picked = typed ? null : pending
+  const capturedAt = picked?.capturedAt ?? performance.now()
+  const png = MOCK ? null : (picked?.png ?? captureScreen())
   const fresh = !convo
   const conversation = (convo ??= { turns: [] })
   pending = null
@@ -193,7 +241,12 @@ async function explain(input: string | undefined, typed = false): Promise<void> 
     else if ('say' in cmd) turn.says.push(cmd.say)
     win.webContents.send('cmd', cmd)
   }
-  win.webContents.send('reset', { gaze: focus.gaze, model: MOCK ? 'mock' : EXPLAIN_MODEL, question, fresh })
+  win.webContents.send('reset', {
+    gaze: focus.gaze,
+    model: MOCK ? 'mock' : lookbackEnabled && wantsLookback(question) ? LOOKBACK_MODEL : EXPLAIN_MODEL,
+    question,
+    fresh
+  })
 
   try {
     if (png) {
@@ -208,6 +261,7 @@ async function explain(input: string | undefined, typed = false): Promise<void> 
         question,
         source: typed ? 'typed' : 'suggestion',
         history: { firstPngBase64, turns: conversation.turns },
+        pastFrames: wantsLookback(question) ? earlierFrames(pngBase64, capturedAt) : undefined,
         doodles: DOODLES,
         signal: request.signal,
         isCurrent,
@@ -281,7 +335,25 @@ function refreshTray(): void {
         label: paused ? 'Resume' : 'Pause',
         click: () => {
           paused = !paused
-          if (paused) dismiss()
+          if (paused) {
+            forgetLookback()
+            dismiss()
+          } else {
+            void sampleLookback()
+          }
+          refreshTray()
+        }
+      },
+      {
+        label: 'Screen look-back (last 12 seconds)',
+        type: 'checkbox',
+        checked: lookbackEnabled,
+        enabled: !MOCK,
+        click: item => {
+          lookbackEnabled = item.checked
+          forgetLookback()
+          if (lookbackEnabled) void sampleLookback()
+          else dismiss()
           refreshTray()
         }
       },
@@ -303,6 +375,7 @@ function createTray(): void {
 /** Show the setup window; the overlay is (re)created on the chosen display when it closes. */
 function runSetup(startAt: string): void {
   paused = true
+  forgetLookback()
   dismiss()
   const setupWin = openSetup({
     startAt,
@@ -314,6 +387,7 @@ function runSetup(startAt: string): void {
         createOverlay()
         win.webContents.once('did-finish-load', () => win.webContents.send('ready', `${modeLabel()}|${modKey()}`))
       }
+      void sampleLookback()
       refreshTray()
     }
   })
@@ -366,6 +440,25 @@ app.whenReady().then(async () => {
   })
   if (!setupDone() || process.argv.includes('--setup') || argValue('setup-step')) runSetup(argValue('setup-step') ?? 'welcome')
 
+  historyTimer = setInterval(() => void sampleLookback(), 700)
+  void sampleLookback()
+  screen.on('display-added', forgetLookback)
+  screen.on('display-removed', forgetLookback)
+  screen.on('display-metrics-changed', forgetLookback)
+  const blockHistory = () => {
+    historyBlocked = true
+    forgetLookback()
+    answerRequest?.abort()
+  }
+  const unblockHistory = () => {
+    historyBlocked = false
+    void sampleLookback()
+  }
+  powerMonitor.on('lock-screen', blockHistory)
+  powerMonitor.on('unlock-screen', unblockHistory)
+  powerMonitor.on('suspend', blockHistory)
+  powerMonitor.on('resume', unblockHistory)
+
   const keys: Record<string, () => void> = {
     'CommandOrControl+Shift+O': () => {
       console.log('Confusion event: showing mascot + questions...')
@@ -409,4 +502,10 @@ app.whenReady().then(async () => {
   }
 })
 
-app.on('will-quit', () => globalShortcut.unregisterAll())
+app.on('will-quit', () => {
+  clearInterval(historyTimer)
+  forgetLookback()
+  answerRequest?.abort()
+  suggestionRequest?.abort()
+  globalShortcut.unregisterAll()
+})
