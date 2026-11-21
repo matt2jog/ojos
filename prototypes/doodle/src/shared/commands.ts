@@ -47,6 +47,7 @@ export interface OjosApi {
   on(channel: 'nudge', fn: (gaze: Gaze) => void): () => void
   on(channel: 'suggest', fn: (s: Suggestions) => void): () => void
   on(channel: 'cmd', fn: (c: Cmd) => void): () => void
+  on(channel: 'widget', fn: (w: WidgetEvent) => void): () => void
   on(channel: 'error' | 'ready', fn: (msg: string) => void): () => void
   on(channel: 'done' | 'dismiss' | 'chat', fn: () => void): () => void
   dismiss(): void
@@ -61,4 +62,18 @@ export interface OjosApi {
   setFocus(on: boolean): void
   /** Open the Settings window (calibration, sensitivity, status). */
   openSettings(): void
+  /** Send a recorded voice question. Resolves with the transcript ('' if nothing was heard). */
+  voiceAsk(audio: Uint8Array, mimeType: string): Promise<string>
+  /** Speech audio (MP3) for one sentence, or null when the system voice should be used. */
+  tts(text: string): Promise<Uint8Array | null>
+}
+
+/** Generative UI for the current answer, as chosen by the decision model. */
+export interface WidgetEvent {
+  state: 'text' | 'drawing' | 'ready' | 'error'
+  /** The decision model's choice: none, diagram, steps, comparison or interactive */
+  kind: string
+  confidence: number
+  probabilities: Record<string, number>
+  html?: string
 }

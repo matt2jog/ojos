@@ -17,7 +17,9 @@ const api: OjosApi = {
   nudgeHidden: () => ipcRenderer.send('nudge-hidden'),
   setOverPanel: (over) => ipcRenderer.send('mouse', over),
   setFocus: (on) => ipcRenderer.send('focus', on),
-  openSettings: () => ipcRenderer.send('open-settings')
+  openSettings: () => ipcRenderer.send('open-settings'),
+  voiceAsk: (audio, mimeType) => ipcRenderer.invoke('voice-ask', audio, mimeType),
+  tts: (text) => ipcRenderer.invoke('tts', text)
 }
 
 const setup: SetupApi = {

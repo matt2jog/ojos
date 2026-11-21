@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { GenWidget } from './GenWidget'
 
 export interface TurnView {
   /** What the user picked or typed. Empty for a generic "explain this". */
@@ -320,6 +321,7 @@ export function Companion(props: Props): React.JSX.Element {
                   ))}
                 </div>
               ))}
+              <GenWidget />
               {status.kind === 'thinking' && (
                 <div className="talk-status">
                   <span className="dot" />
@@ -392,6 +394,7 @@ export function Companion(props: Props): React.JSX.Element {
             <path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z" />
           </svg>
         </button>
+        {/* Voice (mic + spoken replies) is parked: re-add <VoiceButtons /> here to turn it back on. */}
         <button
           onClick={() => window.ojos.openSettings()}
           aria-label="Settings and eye recalibration"

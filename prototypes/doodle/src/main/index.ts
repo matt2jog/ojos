@@ -13,6 +13,8 @@ import type { Cmd, Gaze, Suggestions, Turn } from '../shared/commands'
 import { openSetup, registerSetupIpc, selectedDisplay, setupDone, storeSet } from './setup'
 import { clampSensitivity, liveGaze, reloadVision, sensitivity, startVision } from './vision'
 import { LOG_FILE } from './log'
+import { elevenLabsEnabled, synthesize, transcribe } from './voice'
+import { DECISION_MODEL, decideUi, generateWidget } from './genui'
 import { ensureRendererUrl } from './serve'
 
 // Load .env without extra deps.
@@ -202,6 +204,15 @@ async function explain(question: string | undefined, typed = false): Promise<voi
       const pngBase64 = await png!
       const firstPngBase64 = await firstPng!
       if (!isCurrent()) return
+      // Decision model, in parallel with the written answer: is a visual worth generating?
+      const asked = question ?? 'Explain what I am looking at'
+      const decision = (lastDecision = decideUi({ apiKey: process.env.GEMINI_API_KEY!, pngBase64, question: asked }).catch((e) => {
+        console.error('[genui] decision failed:', (e as Error).message)
+        return null
+      }))
+      lastPng = pngBase64
+      lastQuestion = asked
+      void decision
       await streamGemini({
         apiKey: process.env.GEMINI_API_KEY!,
         model: EXPLAIN_MODEL,
@@ -215,9 +226,45 @@ async function explain(question: string | undefined, typed = false): Promise<voi
       })
     }
     if (isCurrent()) win.webContents.send('done')
+    if (!MOCK && isCurrent()) void drawVisual(myRun, turn)
   } catch (e) {
     console.error(e)
     if (isCurrent()) win.webContents.send('error', screenBlocked(e) ?? String((e as Error).message ?? e))
+  }
+}
+
+// ---------- generative UI ----------
+let lastDecision: Promise<Awaited<ReturnType<typeof decideUi>> | null> | null = null
+let lastPng = ''
+let lastQuestion = ''
+
+/** After the written answer: if the decision model chose "visual", generate and show a widget. */
+async function drawVisual(myRun: number, turn: Turn): Promise<void> {
+  const d = await lastDecision
+  if (!d || myRun !== runId) return
+  const probs = Object.entries(d.probabilities)
+    .sort((x, y) => y[1] - x[1])
+    .map(([k, v]) => `${k} ${(v * 100).toFixed(0)}%`)
+    .join(', ')
+  console.log(`[genui] ${DECISION_MODEL} chose "${d.kind}" in ${d.ms} ms (${probs})`)
+  const base = { kind: d.kind, confidence: d.confidence, probabilities: d.probabilities }
+  if (d.kind === 'none') return void win.webContents.send('widget', { state: 'text', ...base })
+  win.webContents.send('widget', { state: 'drawing', ...base })
+  try {
+    const started = Date.now()
+    const html = await generateWidget({
+      apiKey: process.env.GEMINI_API_KEY!,
+      model: process.env.GEMINI_WIDGET_MODEL || SUGGEST_MODEL, // the fast model: the user is waiting
+      kind: d.kind,
+      pngBase64: lastPng,
+      question: lastQuestion,
+      answer: turn.says.join(' ')
+    })
+    console.log(`[genui] widget ${html.length} chars in ${Date.now() - started} ms`)
+    if (myRun === runId) win.webContents.send('widget', { state: 'ready', ...base, html })
+  } catch (e) {
+    console.error('[genui] widget failed:', (e as Error).message)
+    if (myRun === runId) win.webContents.send('widget', { state: 'error', ...base })
   }
 }
 
@@ -338,6 +385,17 @@ const modeLabel = (): string => (MOCK ? 'MOCK mode' : `${SUGGEST_MODEL} -> ${EXP
 registerSetupIpc()
 
 ipcMain.on('open-settings', () => runSetup('settings'))
+// Spoken replies: ElevenLabs audio for one sentence, or null to fall back to the system voice.
+ipcMain.handle('tts', (_e, text: string) => synthesize(text))
+// Voice question from the mascot's microphone: transcribe with Gemini, then ask it like typed text.
+ipcMain.handle('voice-ask', async (_e, audio: Uint8Array, mimeType: string) => {
+  const text = MOCK
+    ? 'Why is user None here?'
+    : await transcribe({ apiKey: process.env.GEMINI_API_KEY!, model: SUGGEST_MODEL, audio, mimeType })
+  console.log(`[voice] heard: ${JSON.stringify(text)}`)
+  if (text) void explain(text, true)
+  return text
+})
 ipcMain.handle('settings:get', () => ({
   mock: MOCK,
   suggestModel: SUGGEST_MODEL,
@@ -417,6 +475,7 @@ app.whenReady().then(async () => {
   const mac = process.platform === 'darwin'
   const mod = modKey()
   const mode = modeLabel()
+  console.log(`Voice replies: ${elevenLabsEnabled() ? 'ElevenLabs' : 'system voice (no ELEVENLABS_API_KEY)'}`)
   if (process.platform === 'darwin') console.log(`Screen Recording permission: ${systemPreferences.getMediaAccessStatus('screen')}`)
   console.log(`Ojos ready (${mode}${DOODLES ? ', doodles on' : ''}).`)
   console.log(`  ${mod}+Shift+O = confusion event (point the mouse at what confuses you first)`)
@@ -433,7 +492,7 @@ app.whenReady().then(async () => {
       // --snapshot-do=pick | followup | chat captures a later state than the thought bubble.
       const act = argValue('snapshot-do')
       if (act === 'chat') setTimeout(openChat, 1600)
-      if (act === 'pick' || act === 'followup') setTimeout(() => void explain(MOCK_SUGGESTIONS.questions[0]), 1600)
+      if (act === 'pick' || act === 'followup') setTimeout(() => void explain(argValue('snapshot-q') ?? MOCK_SUGGESTIONS.questions[0]), 1600)
       if (act === 'followup') setTimeout(() => void explain('How do I check for None?', true), 4200)
       setTimeout(async () => {
         const img = await win.webContents.capturePage()

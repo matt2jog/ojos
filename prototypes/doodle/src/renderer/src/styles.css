@@ -606,3 +606,68 @@ body {
   color: #8a8a8a;
   cursor: default;
 }
+
+/* Voice buttons in the mascot bar */
+.ojo-bar .voice-mic.recording {
+  color: #fff;
+  background: #ea4335;
+  animation: mic-pulse 1.1s ease-in-out infinite;
+}
+.ojo-bar .voice-mic.thinking {
+  color: #8ab4f8;
+  animation: blink 1s infinite;
+}
+.ojo-bar .voice-mic.error {
+  color: #fbbc05;
+}
+.ojo-bar .voice-muted {
+  opacity: 0.55;
+}
+@keyframes mic-pulse {
+  50% {
+    box-shadow: 0 0 0 5px rgba(234, 67, 53, 0.25);
+  }
+}
+
+/* Generated visual under an answer */
+.gen-widget {
+  margin: 10px 0 4px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.04);
+}
+.gen-widget-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 11px;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  color: #9aa0a6;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.gen-widget-head span:first-child {
+  color: #8ab4f8;
+  font-weight: 500;
+}
+.gen-widget iframe {
+  display: block;
+  width: 100%;
+  height: 290px;
+  border: 0;
+  background: transparent;
+  color-scheme: dark;
+}
+.gen-widget-loading {
+  padding: 16px 12px;
+  font-size: 13px;
+  color: #9aa0a6;
+}
+
+.gen-decision {
+  margin: 8px 0 2px;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  color: #80868b;
+}
