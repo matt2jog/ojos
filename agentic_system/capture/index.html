@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'">
+<title>Ojos Capture</title>
+<style>
+  :root { color-scheme: light dark; font: 15px/1.45 system-ui, sans-serif; }
+  body { margin: 24px; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  p { margin: 0 0 16px; }
+  select, button { font: inherit; padding: 5px 8px; }
+  select { max-width: 100%; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+  #status { overflow-wrap: anywhere; }
+</style>
+<main>
+  <h1>Ojos Capture</h1>
+  <p>Record everything visible on one display. Export up to the last 20 seconds as a local MP4 bundle.</p>
+  <div id="display-picker" hidden>
+    <label for="display">Display</label>
+    <select id="display"></select>
+  </div>
+  <div class="controls">
+    <button id="start" disabled>Start capture</button>
+    <button id="export" disabled>Export clip</button>
+    <button id="stop" disabled>Stop capture</button>
+  </div>
+  <p id="status" role="status">Loading displays…</p>
+</main>
+<script src="renderer.js"></script>
+</html>
