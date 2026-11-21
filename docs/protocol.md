@@ -88,7 +88,7 @@ This is the legacy single-tracker gaze sidecar. It uses a sorted 200,000 µs gri
 
 ### Gaze and confusion sidecar v2
 
-`exportVisionSeries` in [`models/vision/index.mjs`](../models/vision/index.mjs) returns `{gaze_status, gaze}`. Place `gaze_status` in the manifest and send `gaze` as the multipart JSON part. The [local clip assistant](../agentic_system/assistant/README.md) reads the fused point and box and passes bounded gaze hints with the screen video and a still. Its Gemini request excludes playback audio, individual tracker predictions and confusion scores. The full sidecar makes those numeric fields available for future experiments.
+`exportVisionSeries` in [`models/vision/index.mjs`](../models/vision/index.mjs) returns `{gaze_status, gaze}`. Place `gaze_status` in the manifest and send `gaze` as the multipart JSON part. The [local clip assistant](../agentic_system/assistant/README.md) reads the fused point and box and passes bounded gaze hints with the screen video and a still. The Gemini request sends fused gaze hints. Playback audio is opt-in. The full sidecar makes those numeric fields available for future experiments.
 
 ```json
 {
@@ -142,9 +142,16 @@ data: {"schema_version":1,"status":"answered","likely_question":"Why does the co
 
 Result `status` is `answered` or `insufficient_evidence`. For insufficient evidence, use `likely_question: null`, a short explanation in `answer`, and `evidence: []`. Each evidence time is relative to clip zero and must fall inside the clip.
 
-- `POST /v1/jobs/{job_id}/messages` takes `{"turn_id":"a-client-generated-uuid","text":"How can I confirm the folder?"}`. Return `202` and echo the turn ID. Deduplicate within the job. Process one active turn per job and send `turn.delta` events carrying `turn_id` and text, followed by `turn.result` with the complete answer or `turn.error` with a code.
-- `DELETE /v1/jobs/{job_id}` cancels pending work and releases media. It is safe to repeat. A timed-out pane sends this request when possible. The backend also expires abandoned jobs and deletes media. `job.canceled` and `job.expired` close the stream. Every job, stream, and turn is accessible only to its issuing install.
+- `DELETE /v1/jobs/{job_id}` cancels pending work and releases media. It is safe to repeat. A timed-out pane sends this request when possible. The backend also expires abandoned jobs and deletes media. `job.canceled` and `job.expired` close the stream. Every job and job stream is accessible only to its issuing install.
 - Errors carry `code`, `message`, and `retryable`. Return `400` for bad ranges or fields, `401` for an invalid credential, `404` for an unknown or foreign job, `410` for an expired job, `413` for oversized clips, and `429` for concurrency or quota limits. Report asynchronous provider failures as `job.error` or `turn.error`.
+
+## Local ADK chat
+
+Electron generates a chat UUID on selection of a fresh suggestion. Its local service accepts one active turn per chat. Requests use the same local bearer authentication as clip jobs.
+
+- `POST /v1/chats/{chat_id}/messages` takes `{"turn_id":"a-client-generated-uuid","message":"How can I confirm the folder?"}`. The initial turn may add `screen_context` (JSON encoded as a string), `jpeg_base64`, and `doodles`.
+- The response is SSE with `turn.status`, `turn.delta`, optional `turn.doodle`, and `turn.usage`. `turn.done` carries the saved answer in `text`. `turn.error` carries a displayable `message`. Retrying a completed turn ID returns the saved answer in the same chat.
+- `GET /v1/chats/{chat_id}/history` returns up to 30 completed turns under `turns` in chronological order.
 
 ## Replay fixture specification
 

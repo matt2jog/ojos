@@ -1,5 +1,6 @@
 import { build, Arch, Platform } from 'electron-builder'
 import { access } from 'node:fs/promises'
+import { execFileSync } from 'node:child_process'
 import { resolve, join } from 'node:path'
 
 const windows = process.platform === 'win32' && process.arch === 'x64'
@@ -23,6 +24,14 @@ for (const file of [
   join(runtime, 'python', python)
 ]) {
   await access(file).catch(() => { throw new Error(`Missing installer input: ${file}`) })
+}
+
+try {
+  execFileSync(join(runtime, 'python', python), ['-B', '-c', 'import google.adk, pypdf'], {
+    stdio: 'ignore', windowsHide: true
+  })
+} catch {
+  throw new Error('Install agentic_system/assistant/requirements.txt into the staged Python runtime before packaging.')
 }
 
 await build({

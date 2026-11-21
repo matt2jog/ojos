@@ -118,12 +118,13 @@ def validate_analysis(value: dict, clip: Clip) -> dict:
 
 
 class BaselineAnalyzer:
-    def __init__(self, provider: Provider):
+    def __init__(self, provider: Provider, *, include_audio=False):
         self.provider = provider
+        self.include_audio = include_audio
 
     def analyze(self, clip: Clip) -> Analysis:
         started = perf_counter()
-        video, frames, gaze = prepare_media(clip)
+        video, frames, gaze = prepare_media(clip, include_audio=self.include_audio)
         context = {
             "source": clip.source,
             "clip": {

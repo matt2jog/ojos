@@ -6,6 +6,9 @@ memory, runs clip analysis in a worker, and exposes replayable SSE on loopback.
 
 from __future__ import annotations
 
+import asyncio
+import base64
+import binascii
 import json
 import re
 import shutil
@@ -162,11 +165,12 @@ class _Job:
 class JobServer:
     """State container and worker dispatcher used by the HTTP handler."""
 
-    def __init__(self, analyzer: BaselineAnalyzer, token: str):
+    def __init__(self, analyzer: BaselineAnalyzer, token: str, chat=None):
         if not token:
             raise ValueError("token must not be empty")
         self.analyzer = analyzer
         self.token = token
+        self.chat = chat
         self.jobs: dict[str, _Job] = {}
         self.keys: dict[tuple[str, str], str] = {}
         self.sessions: dict[str, _SessionState] = {}
@@ -335,6 +339,11 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         route = urlsplit(self.path).path
+        match = re.fullmatch(r"/v1/chats/([0-9a-f-]+)/messages", route)
+        if match and self.state.chat is not None:
+            if self._authorized():
+                self._chat_turn(match[1])
+            return
         if route != "/v1/jobs":
             self._send(HTTPStatus.NOT_FOUND, {"error": "not_found"})
             return
@@ -363,7 +372,18 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(HTTPStatus.ACCEPTED, {"job_id": job.job_id})
 
     def do_GET(self) -> None:
-        match = re.fullmatch(r"/v1/jobs/([0-9a-f-]+)/events", urlsplit(self.path).path)
+        route = urlsplit(self.path).path
+        chat = re.fullmatch(r"/v1/chats/([0-9a-f-]+)/history", route)
+        if chat and self.state.chat is not None:
+            if self._authorized():
+                try:
+                    chat_id = _uuid(chat[1], "chat_id")
+                except ValueError:
+                    self._send(HTTPStatus.BAD_REQUEST, {"error": "invalid_chat"})
+                    return
+                self._send(HTTPStatus.OK, {"turns": self.state.chat.store.recent(chat_id, limit=30)})
+            return
+        match = re.fullmatch(r"/v1/jobs/([0-9a-f-]+)/events", route)
         if not match:
             self._send(HTTPStatus.NOT_FOUND, {"error": "not_found"})
             return
@@ -387,6 +407,64 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("X-Accel-Buffering", "no")
         self.end_headers()
         self._stream_events(job, max(last_id, 0))
+
+    def _chat_turn(self, raw_id: str) -> None:
+        from .adk_chat import ChatBusy, ChatLimit
+
+        service = self.state.chat
+        try:
+            chat_id = _uuid(raw_id, "chat_id")
+            length = int(self.headers.get("Content-Length", "0"))
+            if not 0 < length <= 2 * 1024 * 1024:
+                raise ValueError("Invalid message size.")
+            payload = json.loads(self.rfile.read(length))
+            if not isinstance(payload, dict):
+                raise ValueError("A chat message must be a JSON object.")
+            turn_id = _uuid(payload.get("turn_id"), "turn_id")
+            question = payload.get("message")
+            screen = payload.get("screen_context", "")
+            image = payload.get("jpeg_base64", "")
+            if not isinstance(question, str) or not 0 < len(question.strip()) <= 8000:
+                raise ValueError("Enter a message up to 8,000 characters.")
+            if not isinstance(screen, str) or len(screen) > 6000 or not isinstance(image, str):
+                raise ValueError("Invalid screen context.")
+            jpeg = base64.b64decode(image, validate=True) if image else None
+            if jpeg is not None and (len(jpeg) > 1_400_000 or not jpeg.startswith(b"\xff\xd8\xff")):
+                raise ValueError("Invalid screen JPEG.")
+            service.reserve(chat_id)
+        except ChatBusy as error:
+            self._send(HTTPStatus.CONFLICT, {"error": "chat_busy", "message": str(error)})
+            return
+        except (ValueError, UnicodeDecodeError, binascii.Error, RecursionError) as error:
+            self._send(HTTPStatus.BAD_REQUEST, {"error": "invalid_message", "message": str(error)[:300]})
+            return
+
+        def emit(event, value):
+            self.wfile.write(f"event: {event}\ndata: {_json_bytes(value).decode('utf-8')}\n\n".encode("utf-8"))
+            self.wfile.flush()
+
+        try:
+            self.send_response(HTTPStatus.OK)
+            self.close_connection = True
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            try:
+                emit("turn.status", {"text": "Thinking…"})
+                answer = asyncio.run(service.run(chat_id, turn_id, question.strip(), screen, jpeg, emit,
+                                                 doodles=payload.get("doodles") is True))
+                emit("turn.done", {"text": answer})
+            except (TimeoutError, ChatLimit) as error:
+                emit("turn.error", {"message": str(error) or "This turn timed out."})
+            except (BrokenPipeError, ConnectionResetError):
+                return
+            except Exception:
+                emit("turn.error", {"message": "The assistant could not complete this turn."})
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            pass
+        finally:
+            service.release(chat_id)
 
     def _stream_events(self, job: _Job, last_id: int) -> None:
         cursor = last_id
@@ -448,16 +526,16 @@ class _HTTPServer(ThreadingHTTPServer):
         return self.ojos_state
 
 
-def build_server(analyzer: BaselineAnalyzer, *, token: str, port: int = 8765) -> _HTTPServer:
+def build_server(analyzer: BaselineAnalyzer, *, token: str, port: int = 8765, chat=None) -> _HTTPServer:
     """Build a testable server.  Call ``server.shutdown()`` to stop it."""
 
-    return _HTTPServer(("127.0.0.1", port), JobServer(analyzer, token))
+    return _HTTPServer(("127.0.0.1", port), JobServer(analyzer, token, chat))
 
 
-def serve(analyzer: BaselineAnalyzer, *, token: str, port: int = 8766) -> None:
+def serve(analyzer: BaselineAnalyzer, *, token: str, port: int = 8766, chat=None) -> None:
     """Serve the local prototype until interrupted."""
 
-    server = build_server(analyzer, token=token, port=port)
+    server = build_server(analyzer, token=token, port=port, chat=chat)
     print(f"Ojos assistant listening on http://127.0.0.1:{server.server_port}", flush=True)
     try:
         server.serve_forever(poll_interval=0.2)

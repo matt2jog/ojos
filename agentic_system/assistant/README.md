@@ -1,13 +1,14 @@
-# Ojos clip assistant
+# Ojos assistant
 
-The local Python service analyzes desktop clip bundles and returns a suspected sticking point, up to three possible questions, a short summary, and clip-relative evidence. The current provider uses Gemini 4 Hydrogen by default. It reads the screen video, one timestamped still, and up to 16 gaze hints.
+The local Python service uses Google ADK and Gemini 4 Hydrogen by default. Clip analysis returns a suspected sticking point, up to three suggested questions, a short summary, and clip-relative evidence. It reads the screen video, one timestamped still, and up to 16 gaze hints. Playback audio is opt-in through `OJOS_CLIP_PLAYBACK_AUDIO=1`.
 
 ## Run locally
 
-Install Python 3.10+ and put FFmpeg and FFprobe on `PATH`. The desktop starts the service automatically with a generated bearer token. For a manual run from the repository root, set `GEMINI_API_KEY` and `OJOS_LOCAL_TOKEN` in the environment, then run:
+Install Python 3.10+ and put FFmpeg and FFprobe on `PATH`. The desktop starts the service automatically with a generated bearer token. For a manual run from the repository root, set `GEMINI_API_KEY` and `OJOS_LOCAL_TOKEN` in the environment and run the following commands.
 
 ```sh
-python -m agentic_system.assistant serve
+python -m pip install -r agentic_system/assistant/requirements.txt
+python -m agentic_system.assistant serve --chat-db /path/to/chat.sqlite3
 ```
 
 Submit an exported desktop bundle with the same bearer token in the client environment:
@@ -22,7 +23,13 @@ To analyze a saved bundle without the HTTP service:
 python -m agentic_system.assistant analyze --bundle /path/to/bundle
 ```
 
-A bundle contains `video.mp4`, `manifest.json` and `gaze.json`. The [desktop protocol](../../docs/protocol.md) defines the multipart request and SSE events. The service emits `job.analysis` immediately before `job.result`, and supports resume, deduplication and cancellation. Electron handles the selected-question explainer separately.
+A bundle contains `video.mp4`, `manifest.json` and `gaze.json`. The service emits `job.analysis` immediately before `job.result` and supports resume, deduplication, and cancellation. [Desktop protocol](../../docs/protocol.md)
+
+## Chat
+
+The first message can include a JPEG and screen context. Later turns reuse the chat's ID. The local SQLite database stores completed turns, compacted summaries, indexed passages, and saved notes. The agent reuses a stable instruction and context prefix for Gemini's implicit cache. Usage events report cached tokens when Gemini supplies that count. The agent keeps recent turns verbatim and summarizes older turns to stay within its context budget.
+
+ADK can make dependent calls across the file, PDF, passage search, notes, public web search, and URL tools. File tools read only within `OJOS_CHAT_ROOTS`, with paths separated by the OS path separator. File excerpts, indexed passages, and tool results used in an answer may be sent to Gemini. Web lookups pass the public query or URL to a separate Gemini request.
 
 ## Verify
 

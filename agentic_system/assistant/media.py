@@ -316,7 +316,7 @@ def _still_target(clip: Clip) -> int:
                  if clip.event_start_us - 5_000_000 <= sample["time_us"] < clip.event_start_us), event_middle)
 
 
-def prepare_media(clip: Clip) -> tuple[bytes, tuple[tuple[int, bytes], ...], tuple[dict[str, Any], ...]]:
+def prepare_media(clip: Clip, *, include_audio=False) -> tuple[bytes, tuple[tuple[int, bytes], ...], tuple[dict[str, Any], ...]]:
     """Prepare the screen video, one timestamped still, and bounded gaze hints."""
 
     if shutil.which("ffmpeg") is None:
@@ -324,10 +324,13 @@ def prepare_media(clip: Clip) -> tuple[bytes, tuple[tuple[int, bytes], ...], tup
     with tempfile.TemporaryDirectory(prefix="ojos-media-") as directory:
         workspace = Path(directory)
         output = workspace / "screen.mp4"
+        streams = ["-map", "0:v:0"]
+        if include_audio:
+            streams.extend(["-map", "0:a:0?"])
         _run_ffmpeg([
-            "-copyts", "-start_at_zero", "-i", str(clip.video), "-map", "0:v:0", "-c:v", "copy",
+            "-copyts", "-start_at_zero", "-i", str(clip.video), *streams, "-c", "copy",
             "-map_metadata", "-1", "-map_chapters", "-1", "-movflags", "+faststart", str(output),
-        ], "could not prepare video-only provider input")
+        ], "could not prepare screen media for the provider")
         if not output.is_file() or not 0 < output.stat().st_size <= MAX_VIDEO_BYTES:
             raise InputError("prepared video is empty or too large")
         video_bytes = output.read_bytes()
