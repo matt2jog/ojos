@@ -1,5 +1,7 @@
 # Victor’s Ojos workstream
 
+[Run the screen analysis MVP and connect the desktop](assistant/README.md).
+
 Build the local screen recorder and clip exporter first. Once they produce a playable MP4 with verified timestamps, use that output to build and evaluate the assistant.
 
 | Person | Proposed sprint ownership |
