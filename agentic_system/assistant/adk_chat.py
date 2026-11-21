@@ -41,6 +41,12 @@ INSTRUCTION = (
     "Screen gaze samples use clip-relative microseconds and encoded viewport pixels. average_x/average_y "
     "give the fused point, maxbox bounds its uncertainty, and the model1/model2 coordinates are individual "
     "estimates. Null means unavailable. Use the region to inspect evidence and state uncertainty when warranted."
+    # The answer is rendered as Markdown in a narrow chat bubble.
+    " Formatting: your answer is rendered as Markdown in a 340-pixel-wide bubble. Lead with the answer in one or two "
+    "short sentences. Then, only if it helps, add a short bulleted or numbered list of at most five items. Use "
+    "**bold** for the few key terms, `backticks` for code identifiers, file names and values, and a fenced code block "
+    "for any code longer than a few words. Do not use headings, tables, HTML, horizontal rules or nested lists. "
+    "Close every Markdown marker you open. Keep the whole answer under about 120 words unless the user asks for depth."
 )
 
 

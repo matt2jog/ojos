@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Markdown } from './Markdown'
 import { GenWidget } from './GenWidget'
 import type { SavedChat } from '../../../shared/commands'
 
@@ -378,7 +379,7 @@ export function Companion(props: Props): React.JSX.Element {
                   <div className="talk-turn" key={i}>
                     <div className="talk-q">{t.question ?? (t.title || 'Explain what I’m looking at')}</div>
                     {t.says.map((s, j) => (
-                      <p key={j}>{s}</p>
+                      <Markdown key={j} text={s} />
                     ))}
                   </div>
                 ))}
