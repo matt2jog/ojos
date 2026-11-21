@@ -10,7 +10,7 @@ from .media import Clip, prepare_media
 
 
 DEFAULT_BASELINE_VARIANT = "video-gaze-still"
-DEFAULT_BASELINE_MODEL = "gemini-3.5-flash-lite"
+DEFAULT_BASELINE_MODEL = "gemini-4-hydrogen"
 
 INSTRUCTION = """Analyze this desktop recording for Ojos. Consider the entire clip. Use the
 timestamped event to focus and optional gaze coordinates to locate relevant content.

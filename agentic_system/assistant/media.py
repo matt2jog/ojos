@@ -141,12 +141,19 @@ def _check_video_against_manifest(path: Path, manifest: dict[str, Any]) -> dict[
 
 
 def _validate_gaze_grid(value: Any, *, duration_us: int, width: int, height: int, status: str) -> tuple[dict[str, Any], ...]:
-    if not isinstance(value, dict) or type(value.get("schema_version")) is not int or value["schema_version"] != 1 or not isinstance(value.get("samples"), list):
-        raise InputError("gaze.json must contain schema_version 1 and samples")
+    if not isinstance(value, dict) or type(value.get("schema_version")) is not int or value["schema_version"] not in (1, 2) or not isinstance(value.get("samples"), list):
+        raise InputError("gaze.json must contain schema_version 1 or 2 and samples")
     samples = value["samples"]
     if status not in ("available", "unavailable"):
         raise InputError("gaze_status must be available or unavailable")
-    if status == "unavailable":
+    version = value["schema_version"]
+    if version == 2:
+        if value.get("timebase") != "clip_relative_us" or _positive_int(value.get("step_us"), "gaze step_us") != GAZE_STEP_US:
+            raise InputError("v2 gaze must use the clip-relative 200000 µs grid")
+        if (_positive_int(value.get("viewport_width_px"), "gaze width"),
+                _positive_int(value.get("viewport_height_px"), "gaze height")) != (width, height):
+            raise InputError("v2 gaze geometry does not match the encoded viewport")
+    elif status == "unavailable":
         if samples:
             raise InputError("unavailable gaze must have an empty samples array")
         return ()
@@ -156,12 +163,17 @@ def _validate_gaze_grid(value: Any, *, duration_us: int, width: int, height: int
     for index, sample in enumerate(samples):
         if not isinstance(sample, dict):
             raise InputError(f"gaze sample {index} is not an object")
+        time_us = _uint(sample.get("time_us"), f"gaze sample {index} time_us")
+        if time_us != index * GAZE_STEP_US:
+            raise InputError(f"gaze sample {index} is off the clip grid")
+        if version == 2:
+            fused = _fused_gaze(sample, width, height)
+            if fused is not None:
+                valid.append(fused)
+            continue
         required = {"time_us", "x_px", "y_px", "uncertainty_radius_px", "valid"}
         if set(sample) != required:
             raise InputError(f"gaze sample {index} has unexpected fields")
-        time_us = _uint(sample["time_us"], f"gaze sample {index} time_us")
-        if time_us != index * GAZE_STEP_US:
-            raise InputError(f"gaze sample {index} is off the clip grid")
         if type(sample["valid"]) is not bool:
             raise InputError(f"gaze sample {index} requires a boolean validity flag")
         if not sample["valid"]:
@@ -172,13 +184,38 @@ def _validate_gaze_grid(value: Any, *, duration_us: int, width: int, height: int
         if not (0 <= x < width and 0 <= y < height and radius >= 0):
             raise InputError(f"gaze sample {index} is outside the encoded viewport")
         valid.append({"time_us": time_us, "x_px": x, "y_px": y, "uncertainty_radius_px": radius, "valid": True})
-    if not valid:
-        raise InputError("available gaze requires at least one valid sample")
+    if bool(valid) != (status == "available"):
+        raise InputError("gaze_status does not match the usable gaze samples")
     return tuple(valid)
 
 
+def _fused_gaze(sample: dict[str, Any], width: int, height: int) -> dict[str, Any] | None:
+    """Use Matt's fused point and region. Individual predictions stay out of the baseline prompt."""
+    mode = sample.get("fusion_mode")
+    box = sample.get("maxbox")
+    if mode == "unavailable":
+        if any(field not in sample or sample[field] is not None for field in ("average_x", "average_y", "maxbox")):
+            raise InputError("unavailable v2 gaze requires a null fused point and box")
+        return None
+    if mode not in ("paired", "model1_only", "model2_only") or not isinstance(box, dict):
+        raise InputError("v2 gaze requires a supported fusion mode and viewport box")
+    x = _number(sample.get("average_x"), "fused gaze x")
+    y = _number(sample.get("average_y"), "fused gaze y")
+    left, top, w, h = (_number(box.get(key), f"gaze box {key}") for key in ("x", "y", "w", "h"))
+    right, bottom = left + w, top + h
+    # The exporter computes widths by subtraction. Allow for rounding when adding them back.
+    epsilon = 1e-6
+    if not (0 <= x < width and 0 <= y < height and w >= 0 and h >= 0
+            and 0 <= left <= x + epsilon and x - epsilon <= right <= width + epsilon
+            and 0 <= top <= y + epsilon and y - epsilon <= bottom <= height + epsilon):
+        raise InputError("v2 fused gaze point or box is outside its encoded region")
+    radius = math.hypot(max(x - left, right - x), max(y - top, bottom - y))
+    return {"time_us": sample["time_us"], "x_px": x, "y_px": y, "uncertainty_radius_px": radius,
+            "valid": True, "fusion_mode": mode, "maxbox": {"x": left, "y": top, "w": w, "h": h}}
+
+
 def load_bundle(folder: Path) -> Clip:
-    """Load a standard v1 ``manifest.json``, ``gaze.json`` and ``video.mp4`` bundle."""
+    """Load a v1 manifest, a v1 or v2 gaze sidecar, and the encoded video."""
 
     folder = Path(folder).expanduser().resolve()
     manifest = _read_json(folder / "manifest.json")

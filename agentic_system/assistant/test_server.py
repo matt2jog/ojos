@@ -67,17 +67,20 @@ class ServerTests(unittest.TestCase):
         finally:
             connection.close()
 
-    def submit(self, event_id, offset=0, epoch=0):
+    def submit(self, event_id, offset=0, epoch=0, *, gaze=None, gaze_status=None, expected=202):
         manifest = {**self.manifest, "session_id": self.session_id, "event_id": event_id, "capture_epoch": epoch}
+        if gaze_status is not None:
+            manifest["gaze_status"] = gaze_status
         for field in ("clip_start_us", "clip_end_us", "event_start_us", "event_end_us"):
             manifest[field] += offset
-        fields = (("manifest", json.dumps(manifest).encode()), ("gaze", self.gaze), ("video", self.video))
+        fields = (("manifest", json.dumps(manifest).encode()),
+                  ("gaze", self.gaze if gaze is None else json.dumps(gaze).encode()), ("video", self.video))
         boundary = f"ojos-test-{uuid4().hex}"
         body = b"".join(f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n'.encode() + value + b"\r\n"
                         for name, value in fields) + f"--{boundary}--\r\n".encode()
         status, text = self.request("POST", "/v1/jobs", body, {"Content-Type": f"multipart/form-data; boundary={boundary}"})
-        self.assertEqual(status, 202, text)
-        return json.loads(text)["job_id"]
+        self.assertEqual(status, expected, text)
+        return json.loads(text)["job_id"] if expected == 202 else text
 
     def events(self, job_id, last_id=None):
         headers = {"Last-Event-ID": str(last_id)} if last_id is not None else None
@@ -130,3 +133,25 @@ class ServerTests(unittest.TestCase):
         self.assertTrue(analysis["suspected_confusion"])
         self.assertEqual(analysis["possible_questions"][0], compat["likely_question"])
         self.assertEqual(analysis["summary"], compat["answer"])
+
+    def test_desktop_gaze_v2_available_and_score_only(self):
+        self.server.state.tutor = BaselineAnalyzer(DemoBaselineProvider())
+        width = self.manifest["viewport_width_px"]
+        height = self.manifest["viewport_height_px"]
+        duration = self.manifest["clip_end_us"] - self.manifest["clip_start_us"]
+        missing = {"average_x": None, "average_y": None, "maxbox": None,
+                   "fusion_mode": "unavailable", "confidence": 0.64}
+        samples = [{"time_us": t, **missing} for t in range(0, duration, 200_000)]
+        gaze = {"schema_version": 2, "timebase": "clip_relative_us", "step_us": 200_000,
+                "viewport_width_px": width, "viewport_height_px": height, "samples": samples}
+        score_only = self.submit(str(uuid4()), gaze=gaze, gaze_status="unavailable")
+        self.assertEqual(self.events(score_only)[-2:], ["job.analysis", "job.result"])
+        samples[0].update(average_x=25, average_y=25, maxbox={"x": 20, "y": 20, "w": 10, "h": 10},
+                          fusion_mode="model1_only")
+        with_gaze = self.submit(str(uuid4()), offset=1_000_000, gaze=gaze, gaze_status="available")
+        self.assertEqual(self.events(with_gaze)[-2:], ["job.analysis", "job.result"])
+        error = self.submit(str(uuid4()), gaze={**gaze, "viewport_width_px": width + 1},
+                            gaze_status="available", expected=400)
+        self.assertIn("gaze geometry", error)
+        error = self.submit(str(uuid4()), gaze=gaze, gaze_status="unavailable", expected=400)
+        self.assertIn("gaze_status", error)
