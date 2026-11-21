@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { GenWidget } from './GenWidget'
 import type { SavedChat } from '../../../shared/commands'
 
 export interface TurnView {
@@ -381,6 +382,7 @@ export function Companion(props: Props): React.JSX.Element {
                     ))}
                   </div>
                 ))}
+                <GenWidget />
                 {status.kind === 'thinking' && (
                   <div className="talk-status" role="status">
                     <span className="dot" />

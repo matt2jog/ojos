@@ -19,6 +19,7 @@ from google.genai import types
 
 from .chat_files import FileTools, contains_secret
 from .chat_store import ChatStore
+from .genui import decide_ui, skill, visual_tool
 
 INPUT_LIMIT = 72_000
 OUTPUT_LIMIT = 8_000
@@ -377,10 +378,18 @@ class ChatService:
                 instruction + "\nUse run_subagent for substantial independent tasks or when the user asks "
                 "for delegation. Give each helper a focused task and use its findings in your answer."
             )
+            # Generative UI: the Decisions API picks the presentation; anything but "none" unlocks
+            # render_visual and adds the skill for that presentation type.
+            ui = await asyncio.to_thread(decide_ui, self.api_key, jpeg, question)
+            emit("turn.ui", ui)
+            ui_tools = []
+            if ui["kind"] != "none":
+                root_instructions += skill(ui["kind"])
+                ui_tools.append(visual_tool(ui["kind"], emit))
             agent = LlmAgent(
                 name="ojos_chat", model=Gemini(model=self.model, client=sdk),
                 instruction=root_instructions,
-                tools=[*tools, run_subagent],
+                tools=[*tools, run_subagent, *ui_tools],
                 generate_content_config=types.GenerateContentConfig(store=False, max_output_tokens=OUTPUT_LIMIT),
                 before_model_callback=count_input(self.model, root_instructions), before_tool_callback=before_tool,
                 on_tool_error_callback=tool_error,

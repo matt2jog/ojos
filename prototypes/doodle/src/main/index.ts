@@ -171,6 +171,7 @@ async function ask(question: string | undefined, picked = false): Promise<void> 
     }, (event) => {
       if (!current()) return
       if (event.kind === 'doodle') win.webContents.send('cmd', event.command)
+      else if (event.kind === 'widget') win.webContents.send('widget', event.widget)
       else win.webContents.send(event.kind === 'status' ? 'chat-status' : 'chat-delta', event.text)
     })
     if (current()) {

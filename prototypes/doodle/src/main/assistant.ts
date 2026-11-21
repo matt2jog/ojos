@@ -5,7 +5,7 @@ import { mkdir } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
-import type { ChatHistory, DrawCmd, SavedChat } from '../shared/commands'
+import type { ChatHistory, DrawCmd, SavedChat, WidgetEvent } from '../shared/commands'
 import { project, python } from './runtime'
 
 let child: ChildProcess | undefined
@@ -103,6 +103,7 @@ interface ChatRequest {
 }
 
 type ChatEvent = { kind: 'status'; text: string } | { kind: 'delta'; text: string } | { kind: 'doodle'; command: DrawCmd }
+  | { kind: 'widget'; widget: WidgetEvent }
 const TOOL_LABELS: Record<string, string> = {
   list_files: 'Finding local files',
   read_file: 'Reading a local file',
@@ -113,7 +114,8 @@ const TOOL_LABELS: Record<string, string> = {
   read_url: 'Reading a web page',
   remember: 'Saving a note',
   recall: 'Looking up a note',
-  run_subagent: 'Asking a Gemini helper'
+  run_subagent: 'Asking a Gemini helper',
+  render_visual: 'Drawing a visual'
 }
 
 export async function streamChatTurn(opts: ChatRequest, onEvent: (event: ChatEvent) => void): Promise<{ text: string; chat: SavedChat }> {
@@ -131,6 +133,8 @@ export async function streamChatTurn(opts: ChatRequest, onEvent: (event: ChatEve
   }
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
   let buffer = ''
+  let ui: Pick<WidgetEvent, 'kind' | 'confidence' | 'probabilities'> | undefined
+  let drawn = false
   try {
     while (true) {
       const { value, done } = await reader.read()
@@ -146,9 +150,22 @@ export async function streamChatTurn(opts: ChatRequest, onEvent: (event: ChatEve
         if (!raw) continue
         const data = JSON.parse(raw)
         if (name === 'turn.error') throw new Error(data.message)
-        if (name === 'turn.done' && typeof data.text === 'string') return data
+        if (name === 'turn.done' && typeof data.text === 'string') {
+          // The decision asked for a visual but the agent never rendered one.
+          if (ui && ui.kind !== 'none' && !drawn) onEvent({ kind: 'widget', widget: { state: 'error', ...ui } })
+          return data
+        }
         if (name === 'turn.delta' && typeof data.text === 'string') onEvent({ kind: 'delta', text: data.text })
         if (name === 'turn.doodle' && data.draw) onEvent({ kind: 'doodle', command: data })
+        // Generative UI: the decision model's choice, then the visual the agent rendered for it.
+        if (name === 'turn.ui' && typeof data.kind === 'string') {
+          ui = { kind: data.kind, confidence: data.confidence ?? 0, probabilities: data.probabilities ?? {} }
+          onEvent({ kind: 'widget', widget: { state: ui.kind === 'none' ? 'text' : 'drawing', ...ui } })
+        }
+        if (name === 'turn.widget' && typeof data.html === 'string') {
+          onEvent({ kind: 'widget', widget: { state: 'ready', ...(ui ?? { kind: data.kind, confidence: 0, probabilities: {} }), html: data.html } })
+          drawn = true
+        }
         if (name === 'turn.status') {
           const text = typeof data.text === 'string' ? data.text : TOOL_LABELS[data.tools?.[0]] ?? 'Using a tool'
           onEvent({ kind: 'status', text })

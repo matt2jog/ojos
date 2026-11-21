@@ -59,6 +59,7 @@ export interface OjosApi {
   on(channel: 'nudge', fn: (gaze: Gaze) => void): () => void
   on(channel: 'suggest', fn: (s: Suggestions) => void): () => void
   on(channel: 'cmd', fn: (c: Cmd) => void): () => void
+  on(channel: 'widget', fn: (w: WidgetEvent) => void): () => void
   on(channel: 'chat-status' | 'chat-delta' | 'chat-answer', fn: (text: string) => void): () => void
   on(channel: 'chat-history', fn: (history: ChatHistory) => void): () => void
   on(channel: 'chat-meta', fn: (chat: SavedChat) => void): () => void
@@ -81,4 +82,14 @@ export interface OjosApi {
   newChat(): void
   olderChatTurns(before: number): Promise<ChatHistory>
   openSettings(): void
+}
+
+/** Generative UI for the current answer, as chosen by the decision model. */
+export interface WidgetEvent {
+  state: 'text' | 'drawing' | 'ready' | 'error'
+  /** The decision model's choice: none, diagram, steps, comparison or interactive */
+  kind: string
+  confidence: number
+  probabilities: Record<string, number>
+  html?: string
 }
