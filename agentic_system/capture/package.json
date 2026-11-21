@@ -1,0 +1,14 @@
+{
+  "name": "ojos-capture",
+  "version": "0.1.0",
+  "private": true,
+  "main": "main.cjs",
+  "engines": { "node": ">=22.12.0" },
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "electron": "45.4.1"
+  }
+}
