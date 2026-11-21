@@ -1,0 +1,8 @@
+[
+  {"id":"original-720","name":"original","variant":"both","height":720,"rate":30,"windowName":"calibration"},
+  {"id":"repeat-720","name":"repeat","variant":"both","height":720,"rate":30,"windowName":"calibration"},
+  {"id":"original-480","name":"original","variant":"both","height":480,"rate":30,"windowName":"calibration"},
+  {"id":"repeat-480","name":"repeat","variant":"both","height":480,"rate":30,"windowName":"calibration"},
+  {"id":"reasoning-720","name":"original","variant":"both","height":720,"rate":20,"windowName":"reasoning"},
+  {"id":"reasoning-480","name":"original","variant":"both","height":480,"rate":20,"windowName":"reasoning","fromUs":41036200,"duration":60}
+]
