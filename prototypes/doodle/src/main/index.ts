@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { readFile, rm } from 'node:fs/promises'
 import { analyzeBundle } from '@assistant'
 import type { Gaze } from '../shared/commands'
-import type { Interval, VisionExport } from '../shared/capture'
+import type { Interval, ViewportRect, VisionExport } from '../shared/capture'
 import { calibrationDisplay, configuredDisplay, openSetup, registerSetupIpc, selectedDisplay, setupContents, setupDone, storeGet, storeSet } from './setup'
 import { RecordingService } from './capture/service'
 import { assistant, chatHistory, stopAssistant, streamChatTurn } from './assistant'
@@ -15,6 +15,8 @@ if (!app.requestSingleInstanceLock()) app.quit()
 configureRuntime()
 const DOODLES = process.argv.includes('--doodles') || process.env.DOODLES === '1'
 const PICK_KEYS = ['Alt+1', 'Alt+2', 'Alt+3']
+const configuredIoU = Number(process.env.OJOS_CHAT_GAZE_IOU ?? 0.08)
+const paneIoU = configuredIoU > 0 && configuredIoU < 1 ? configuredIoU : 0.08
 
 let win: BrowserWindow
 let display: Display
@@ -23,6 +25,9 @@ let capture: RecordingService | undefined
 let nudgeRequest: AbortController | undefined
 let chatRequest: AbortController | undefined
 let chatId: string | undefined
+let chatPane: ViewportRect | null = null
+let chatAnswered = false
+let chatHelpOffered = false
 const center: Gaze = { x: 500, y: 500 } // placement only, never sent as gaze evidence
 
 function createOverlay(): void {
@@ -69,6 +74,19 @@ let paused = false
 /** Confusion detected: show the mascot and start guessing the question. Never explains on its own. */
 async function nudge(interval?: Interval): Promise<void> {
   if (paused || chatRequest || !capture?.isRecording()) return
+  if (interval && chatId && chatAnswered && chatPane) {
+    const id = chatId
+    const pane = chatPane
+    const overlap = await capture.gazedAtPane(interval, pane, paneIoU)
+    if (paused || chatRequest || id !== chatId || pane !== chatPane) return
+    if (overlap) {
+      if (!chatHelpOffered) {
+        chatHelpOffered = true
+        win.webContents.send('chat-help')
+      }
+      return // The existing explanation is the context for this offer.
+    }
+  }
   nudgeRequest?.abort()
   nudgeRequest = new AbortController()
   const signal = AbortSignal.any([nudgeRequest.signal, AbortSignal.timeout(120_000)])
@@ -117,6 +135,8 @@ async function ask(question: string | undefined, picked = false): Promise<void> 
   const controller = new AbortController()
   chatId = id
   chatRequest = controller
+  if (fresh) chatAnswered = false
+  chatPane = null
   const current = (): boolean => chatRequest === controller && !win.isDestroyed()
   if (nudgeRequest) clearNudge()
   win.webContents.send('reset', { gaze: evidence?.gaze, question: message, fresh })
@@ -135,6 +155,8 @@ async function ask(question: string | undefined, picked = false): Promise<void> 
       else win.webContents.send(event.kind === 'status' ? 'chat-status' : 'chat-delta', event.text)
     })
     if (current()) {
+      chatAnswered = true
+      chatHelpOffered = false
       storeSet('chat.lastId', id)
       refreshTray()
       win.webContents.send('chat-answer', answer)
@@ -165,6 +187,9 @@ async function openLastChat(): Promise<void> {
     const turns = await chatHistory(id, AbortSignal.any([controller.signal, AbortSignal.timeout(25_000)]))
     if (chatRequest !== controller || win.isDestroyed()) return
     chatId = id
+    chatAnswered = turns.length > 0
+    chatHelpOffered = false
+    chatPane = null
     win.webContents.send('chat-history', turns)
     win.webContents.send('chat')
   } catch (error) {
@@ -182,6 +207,9 @@ function dismiss(): void {
   chatRequest?.abort()
   chatRequest = undefined
   chatId = undefined
+  chatAnswered = false
+  chatHelpOffered = false
+  chatPane = null
   if (win && !win.isDestroyed()) {
     win.setFocusable(false)
     win.webContents.send('dismiss')
@@ -204,6 +232,18 @@ ipcMain.on('focus', (event, focus: boolean) => {
   win.setFocusable(Boolean(focus))
   if (focus) win.focus()
 })
+ipcMain.on('chat-pane', (event, rect: ViewportRect | null) => {
+  if (!fromOverlay(event)) return
+  if (!rect || ![rect.x, rect.y, rect.w, rect.h].every(Number.isFinite) ||
+    rect.x < 0 || rect.y < 0 || rect.w <= 0 || rect.h <= 0 ||
+    rect.x + rect.w > 1.001 || rect.y + rect.h > 1.001) {
+    chatPane = null
+    return
+  }
+  if (chatPane?.x === rect.x && chatPane?.y === rect.y && chatPane?.w === rect.w && chatPane?.h === rect.h) return
+  chatPane = rect
+})
+
 // ---------- menu-bar / tray ----------
 let tray: Tray | null = null
 

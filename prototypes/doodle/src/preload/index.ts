@@ -15,7 +15,8 @@ const api: OjosApi = {
   ask: (text) => ipcRenderer.send('ask', text),
   nudgeHidden: () => ipcRenderer.send('nudge-hidden'),
   setOverPanel: (over) => ipcRenderer.send('mouse', over),
-  setFocus: (on) => ipcRenderer.send('focus', on)
+  setFocus: (on) => ipcRenderer.send('focus', on),
+  setChatPane: (rect) => ipcRenderer.send('chat-pane', rect)
 }
 
 const setup: SetupApi = {

@@ -17,6 +17,7 @@ export function App(): React.JSX.Element {
   const [thread, setThread] = useState<TurnView[]>([])
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
   const [busy, setBusy] = useState(false)
+  const [offerSimpler, setOfferSimpler] = useState(false)
   const [gaze, setGaze] = useState<{ x: number; y: number } | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [questions, setQuestions] = useState<string[] | null>(null)
@@ -68,6 +69,7 @@ export function App(): React.JSX.Element {
     engineRef.current?.cancel()
     setMode('hidden')
     setBusy(false)
+    setOfferSimpler(false)
     setGaze(null)
     if (fadeTimer.current) clearTimeout(fadeTimer.current)
     fadeTimer.current = setTimeout(() => {
@@ -101,8 +103,10 @@ export function App(): React.JSX.Element {
         setQuestions(sug.questions.filter((q) => !asked.has(q)))
       }),
       window.ojos.on('chat', openChat),
+      window.ojos.on('chat-help', () => setOfferSimpler(true)),
       window.ojos.on('chat-history', (turns) => {
-        setThread(turns.map(({ question, answer }) => ({ question, title: question, says: [answer] })))
+        setThread(turns.map(({ question, answer }) => ({ question, title: question, says: [answer], answered: true })))
+        setOfferSimpler(false)
         setQuestions([])
         setStatus({ kind: 'idle' })
         setGaze(null)
@@ -115,6 +119,7 @@ export function App(): React.JSX.Element {
         setQuestions((qs) => (qs ?? []).filter((q) => q !== question))
         setGaze(gaze ?? null)
         setStatus({ kind: 'thinking' })
+        setOfferSimpler(false)
         setBusy(true)
         setMode('chat')
       }),
@@ -124,7 +129,7 @@ export function App(): React.JSX.Element {
         setThread((prev) => editLast(prev, (turn) => ({ ...turn, says: [(turn.says[0] ?? '') + text] })))
       }),
       window.ojos.on('chat-answer', (text) => {
-        setThread((prev) => editLast(prev, (turn) => ({ ...turn, says: [text] })))
+        setThread((prev) => editLast(prev, (turn) => ({ ...turn, says: [text], answered: true })))
       }),
       window.ojos.on('cmd', (cmd) => engineRef.current?.push(cmd)),
       window.ojos.on('error', (text) => {
@@ -158,12 +163,17 @@ export function App(): React.JSX.Element {
         thread={thread}
         status={status}
         busy={busy}
+        offerSimpler={offerSimpler}
         mac={mac}
         focusSignal={focusSignal}
         onPick={(q) => window.ojos.accept(q)}
         onAsk={(text) => window.ojos.ask(text)}
         onOpenChat={openChat}
         onDismiss={() => window.ojos.dismiss()}
+        onSimplify={() => {
+          setOfferSimpler(false)
+          window.ojos.ask('Can you explain your last answer in a different way?')
+        }}
         onHover={onHover}
       />
       {toast && <ReadyToast text={toast} />}

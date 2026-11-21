@@ -1,5 +1,6 @@
 // Contract between the explainer (Gemini / backend) and the desktop overlay.
 // Coordinates are normalized 0-1000 over the captured screen, origin top-left.
+import type { ViewportRect } from './capture'
 
 export type Gaze = { x: number; y: number }
 export type Point = [number, number]
@@ -49,7 +50,7 @@ export interface OjosApi {
   on(channel: 'chat-status' | 'chat-delta' | 'chat-answer', fn: (text: string) => void): () => void
   on(channel: 'chat-history', fn: (turns: Array<{ question: string; answer: string }>) => void): () => void
   on(channel: 'error' | 'ready', fn: (msg: string) => void): () => void
-  on(channel: 'done' | 'dismiss' | 'chat', fn: () => void): () => void
+  on(channel: 'done' | 'dismiss' | 'chat' | 'chat-help', fn: () => void): () => void
   dismiss(): void
   /** User wants help: a picked suggestion, or no question for "explain this". */
   accept(question?: string): void
@@ -60,4 +61,5 @@ export interface OjosApi {
   setOverPanel(over: boolean): void
   /** The overlay normally never takes focus. Typing needs it, so the chat box asks for it. */
   setFocus(on: boolean): void
+  setChatPane(rect: ViewportRect | null): void
 }

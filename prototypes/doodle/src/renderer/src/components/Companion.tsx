@@ -5,6 +5,7 @@ export interface TurnView {
   question?: string
   title: string
   says: string[]
+  answered?: boolean
 }
 
 interface Props {
@@ -15,6 +16,7 @@ interface Props {
   thread: TurnView[]
   status: { kind: 'idle' | 'thinking' | 'error'; text?: string }
   busy: boolean
+  offerSimpler: boolean
   mac: boolean
   /** Changes when the chat box should take the keyboard. */
   focusSignal: number
@@ -22,6 +24,7 @@ interface Props {
   onAsk(text: string): void
   onOpenChat(): void
   onDismiss(): void
+  onSimplify(): void
   onHover(over: boolean): void
 }
 
@@ -103,13 +106,14 @@ function Thought({ items, compact }: { items: ThoughtItem[]; compact?: boolean }
  * Drag it by the face to move it. Pupils follow the pointer (gaze later).
  */
 export function Companion(props: Props): React.JSX.Element {
-  const { mode, questions, thread, status, busy, mac, focusSignal, onPick, onAsk,
-    onOpenChat, onDismiss, onHover } =
+  const { mode, questions, thread, status, busy, offerSimpler, mac, focusSignal, onPick, onAsk,
+    onOpenChat, onDismiss, onSimplify, onHover } =
     props
   const pillRef = useRef<HTMLButtonElement>(null)
   const pupilRefs = useRef<(SVGGElement | null)[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
   const threadRef = useRef<HTMLDivElement>(null)
+  const paneRef = useRef<HTMLDivElement>(null)
   const drag = useRef<{ dx: number; dy: number; x0: number; y0: number; moved: boolean } | null>(null)
   const justDragged = useRef(false)
   const [pos, setPos] = useState<Pos>(startPos)
@@ -120,6 +124,7 @@ export function Companion(props: Props): React.JSX.Element {
   const [collapsed, setCollapsed] = useState(false)
   const [draft, setDraft] = useState('')
   const visible = mode !== 'hidden'
+  const reportPane = mode === 'chat' && !collapsed && !busy && thread.some((turn) => turn.answered)
 
   // Pupils ease toward the pointer.
   useEffect(() => {
@@ -204,6 +209,32 @@ export function Companion(props: Props): React.JSX.Element {
     const el = threadRef.current
     if (el) el.scrollTop = el.scrollHeight
   }, [thread, status])
+
+  useEffect(() => {
+    const pane = paneRef.current
+    if (!reportPane || !pane) {
+      window.ojos.setChatPane(null)
+      return
+    }
+    const publish = (): void => {
+      const rect = pane.getBoundingClientRect()
+      const left = Math.max(0, rect.left)
+      const top = Math.max(0, rect.top)
+      const right = Math.min(innerWidth, rect.right)
+      const bottom = Math.min(innerHeight, rect.bottom)
+      window.ojos.setChatPane(right > left && bottom > top ?
+        { x: left / innerWidth, y: top / innerHeight, w: (right - left) / innerWidth, h: (bottom - top) / innerHeight }
+        : null)
+    }
+    const observer = new ResizeObserver(publish)
+    observer.observe(pane)
+    addEventListener('resize', publish)
+    publish()
+    return () => {
+      observer.disconnect()
+      removeEventListener('resize', publish)
+    }
+  }, [reportPane, pos.x, pos.y])
 
   const pick = (q?: string): void => {
     setHappy(true)
@@ -311,7 +342,7 @@ export function Companion(props: Props): React.JSX.Element {
           </>
         )}
         {mode === 'chat' && !collapsed && (
-          <div className="talk" style={{ maxHeight: room }}>
+          <div className="talk" ref={paneRef} style={{ maxHeight: room }}>
             <div className="talk-thread" ref={threadRef}>
               {thread.length === 0 && <p className="talk-empty">Ask Ojos a question to start a chat.</p>}
               {thread.map((t, i) => (
@@ -333,6 +364,9 @@ export function Companion(props: Props): React.JSX.Element {
               {status.kind === 'error' && <div className="talk-status err" role="alert">{status.text}</div>}
             </div>
             {!busy && <Thought items={chips} compact />}
+            {!busy && offerSimpler && (
+              <button type="button" className="talk-simplify" onClick={onSimplify}>Explain it another way</button>
+            )}
             <form className="talk-ask" onSubmit={send}>
               <input
                 ref={inputRef}

@@ -8,6 +8,8 @@ import { loadTrackerProfile } from '@vision/calibration.mjs'
 import { exportVisionSeries } from '@vision/series.mjs'
 import { Recorder, writeBundle } from '@recorder'
 import type { CalibrationGeometry } from '@vision/calibration.mjs'
+import { paneGazeIoU } from '../../shared/gazeGeometry'
+import type { ViewportRect } from '../../shared/capture'
 import type { AudioBlock, CalibrationReady, CalibrationStage, CameraGeometry, CaptureSpec, Frame, Interval, NativeLane, Observation, VisionExport } from '../../shared/capture'
 import { launchNativeVision } from '../nativeVision'
 import { displayInfo, storeGet, storeSet } from '../setup'
@@ -252,6 +254,20 @@ export class RecordingService {
     this.stop()
     this.cancelCalibrationWarmup()
     clearInterval(this.#monitor)
+  }
+
+  async gazedAtPane(interval: Interval, pane: ViewportRect, threshold: number): Promise<boolean> {
+    const active = this.#active
+    if (active?.spec.mode !== 'record' || interval.session_id !== active.spec.sessionId ||
+        interval.capture_epoch !== active.spec.epoch) return false
+    const start = Math.max(interval.start_us, interval.end_us - 1_600_000)
+    if (interval.end_us <= start) return false
+    const vision: VisionExport | undefined = await active.win.webContents
+      .executeJavaScript("window.exportVision(" + start + "," + interval.end_us + ")").catch(() => undefined)
+    if (!vision || this.#active !== active) return false
+    const { viewportWidth, viewportHeight } = active.spec
+    return vision.gaze.samples.filter(({ maxbox }) =>
+      maxbox && paneGazeIoU(pane, maxbox, viewportWidth, viewportHeight) > threshold).length >= 2
   }
 
   async clip(interval: Interval | undefined, signal: AbortSignal) {
