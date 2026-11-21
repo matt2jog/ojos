@@ -41,6 +41,14 @@ flock /workspace/ojos-training.gpu.lock .venv/bin/python -u bench.py   --checkpo
 node score.mjs public public-gpu.jsonl   /workspace/ojos-runs/eye-tracking/mpiifacegaze-v1/observations   /workspace/ojos-runs/eye-tracking/webeyetrack-public/cpu public-gpu-metrics.json
 ~~~
 
+The public network probe uses WebEyeTrack’s roundtrip.py client and the same MPIIFaceGaze JPEGs. Its SSH wrapper runs this server with the shared GPU lock. Use only the public probe folder with that client.
+
+~~~sh
+flock /workspace/ojos-training.gpu.lock .venv/bin/python -u stream.py \
+  --checkpoint epoch_24_ckpt.pth.tar --face-model face_model.txt \
+  --landmarker /workspace/ojos-data/eye-tracking/face_landmarker.task --device cuda
+~~~
+
 For the architecture comparison, clone the official source, check out the revision above and run parity.py with --upstream and --checkpoint. The observed maximum absolute output difference on the two seeded synthetic face inputs was 0 radians.
 
 ## How to read the metrics

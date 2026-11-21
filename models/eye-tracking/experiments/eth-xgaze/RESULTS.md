@@ -15,7 +15,11 @@ The same 1,748 original p13/p14 images were replayed as the WebEyeTrack experime
 
 The camera-plane variant scored 295/126 px median on p13/p14, versus 191/142 px for WebEyeTrack ridge and 284/216 px for MediaPipe ridge. The direction-only variant was more vulnerable to head translation. The public result uses published camera intrinsics and lens correction. [Ojos public benchmark](../../offline/results.md)
 
-The A100 run took 73.1 seconds, equivalent to 23.9 images/sec unpaced including JPEG decoding. Batch-one service for usable images measured 37.9 / 43.4 ms median / p95. CPU Face Landmarker took 17.5 / 22.8 ms, normalization and tensor preparation 13.1 / 14.1 ms, and CUDA ResNet with synchronous host transfers 6.9 / 7.5 ms. The service clock starts after the image decoder and excludes network transfer. The measured Vast path should stay a public benchmark. The laptop inference application requires local video.
+The A100 run took 73.1 seconds, equivalent to 23.9 images/sec unpaced including JPEG decoding. Batch-one service for usable images measured 37.9 / 43.4 ms median / p95. CPU Face Landmarker took 17.5 / 22.8 ms, normalization and tensor preparation 13.1 / 14.1 ms, and CUDA ResNet with synchronous host transfers 6.9 / 7.5 ms. The service clock starts after the image decoder. The same Vast run on CPU took 252.1 seconds (6.93 images/sec), with usable service at 132.0 / 202.5 ms median / p95 and ResNet at 101.4 / 162.5 ms. Its paired plane error was 11.49% versus 11.48% on CUDA. The measured Vast path should stay a public benchmark. The laptop inference application requires local video.
+
+### Public upload probe
+
+The same public JPEGs and bounded SSH queue as the WebEyeTrack experiment supplied 300 frames over 15 seconds at 20 Hz. ETH-XGaze returned 102 replies (6.72 Hz) and dropped 198 frames. The median payload was 28.4 KB. Server service was 31.5 / 37.6 ms median / p95. Capture-to-reply age was 165.9 / 206.2 ms, including client queue delay of 23.8 / 45.1 ms. The network residual was 107.3 / 130.5 ms. The 6.72 Hz result measures uncalibrated replies. An export that requires adjacent valid source timestamps less than 100 ms apart cannot infer 5 Hz validity from that rate alone.
 
 ## Local labeled calibration
 
@@ -37,11 +41,22 @@ On native Windows CPU with two Torch threads, the 720p calibration runs measured
 
 ## Reasoning replay
 
-The full 519-second webcam reasoning replay is running locally. It uses the same source timestamps at 20 Hz and scores in-bounds coverage, invalid run lengths, and actual 5 Hz exported coverage. The reasoning footage has no continuous fixation labels.
+The complete 519.1-second reasoning window produced 10,382 sampled observations. The unpaced Windows CPU pass took 730.8 seconds including decoding, equivalent to 14.21 observations/sec or 0.71× real-time playback. Usable observations took 68.4 / 79.7 ms median / p95 for in-process service and 55.9 / 65.9 ms for the ResNet. The ETH-XGaze quality gate discarded 606 blinks and face detection remained stable throughout. The recording supplies no continuous fixation labels, so the table measures availability and dropout.
+
+| 720p profile applied | Startup gate | In-bounds samples | Valid 5 Hz slots | Invalid run p95 | Longest invalid run |
+| --- | --- | ---: | ---: | ---: | ---: |
+| MediaPipe, original | fail | 196 / 10,382 (1.9%) | 34 / 2,596 | 41.82 s | 92.38 s |
+| ETH-XGaze slopes, original | fail | 8,740 / 10,382 (84.2%) | 2,115 / 2,596 | 0.74 s | 6.61 s |
+| ETH-XGaze plane, original | fail | 8,220 / 10,382 (79.2%) | 1,978 / 2,596 | 1.04 s | 6.61 s |
+| MediaPipe, repeat | pass | 1,275 / 10,382 (12.3%) | 295 / 2,596 | 25.30 s | 82.99 s |
+| ETH-XGaze slopes, repeat | pass | 8,942 / 10,382 (86.1%) | 2,173 / 2,596 | 0.90 s | 3.27 s |
+| ETH-XGaze plane, repeat | pass | 8,673 / 10,382 (83.5%) | 2,091 / 2,596 | 0.72 s | 3.68 s |
+
+Rows whose original fit failed are counterfactual. Ojos would leave gaze unavailable with that calibration. The comparison uses an offline 20 Hz camera timestamp schedule, so the valid-grid counts do not include extra misses from a live CPU backpressure queue. The preceding Chromium WebEyeTrack replay on the same reasoning interval with its repeat fit produced 83.0% in bounds and 2,074 / 2,596 valid 5 Hz slots.
 
 ## Verification and locations
 
-The PyTorch port matched the checkpoint-loaded official forward pass with 0 radians maximum absolute error on two seeded synthetic crops. All six existing Ojos gaze tests passed, including calibration, timing, invalid intervals, and the 5 Hz export. [Reproduction commands and asset terms](README.md)
+The PyTorch port matched the checkpoint-loaded official forward pass with 0 radians maximum absolute error on two seeded synthetic crops. Both ETH geometry tests and all six existing Ojos gaze tests passed, including calibration, timing, invalid intervals, and the 5 Hz export. [Reproduction commands and asset terms](README.md)
 
 - Vast public run at /workspace/ojos-runs/eye-tracking/eth-xgaze
 - Laptop run at C:/Users/matth/AppData/Local/Ojos/eth-xgaze-bench
