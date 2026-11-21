@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { saveTrackerProfile, type CalibrationGeometry, type FitResult, type Tracker } from '@vision/calibration.mjs'
 import type { DisplayInfo, PermissionKind, PermissionState } from '../../../shared/setup'
+import type { VisionStatus } from '../../../shared/vision'
 import { Logo } from '../components/Logo'
 import { Calibration, type CalibrationOutcome } from './Calibration'
 
@@ -73,6 +74,14 @@ export function SetupApp(): React.JSX.Element {
   const [skipped, setSkipped] = useState(false)
   const [camError, setCamError] = useState<string | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
+  const [vision, setVision] = useState<VisionStatus | null>(null)
+  const liveEyes = vision?.model1 === 'on' && !AUTOPILOT
+
+  // Live vision status (eye model + confusion model running in the hidden vision window).
+  useEffect(() => {
+    void window.vision.status().then(setVision)
+    return window.vision.onStatus(setVision)
+  }, [])
   const mac = platform === 'darwin'
 
   useEffect(() => {
@@ -118,8 +127,10 @@ export function SetupApp(): React.JSX.Element {
     let cameraId = 'simulated'
     let cameraWidth = 1280
     let cameraHeight = 720
+    // With live vision, calibrate against the exact geometry the vision session uses.
+    const liveGeometry = AUTOPILOT ? null : await window.vision.geometry()
     try {
-      if (AUTOPILOT) throw new Error('autopilot: no camera')
+      if (AUTOPILOT || liveGeometry) throw new Error('camera owned elsewhere')
       const track = (await openCamera()).getVideoTracks()[0]
       const s = track.getSettings()
       cameraId = s.deviceId || 'default-camera'
@@ -128,7 +139,7 @@ export function SetupApp(): React.JSX.Element {
     } catch {
       /* no camera: simulated geometry keeps the flow usable */
     }
-    setGeometry({
+    setGeometry(liveGeometry ?? {
       cameraId,
       cameraWidth,
       cameraHeight,
@@ -156,6 +167,7 @@ export function SetupApp(): React.JSX.Element {
       }
       if (geometry) window.setup.store.setItem('calibration.geometry', JSON.stringify(geometry))
     }
+    void window.vision.reload() // fresh capture epoch that loads the new profile
     setStep('result')
   }
 
@@ -284,7 +296,9 @@ export function SetupApp(): React.JSX.Element {
         </main>
       )}
 
-      {step === 'calibrate' && geometry && <Calibration geometry={geometry} autopilot={AUTOPILOT} onDone={(o) => void onCalibrated(o)} />}
+      {step === 'calibrate' && geometry && (
+        <Calibration geometry={geometry} live={liveEyes} autopilot={AUTOPILOT} onDone={(o) => void onCalibrated(o)} />
+      )}
 
       {step === 'result' && (
         <main className="setup-body">
@@ -297,7 +311,7 @@ export function SetupApp(): React.JSX.Element {
           ) : (
             <div className="results">
               {results &&
-                (Object.keys(results) as Tracker[]).map((t) => {
+                (Object.keys(results) as Tracker[]).filter((t) => !liveEyes || t === 'model1').map((t) => {
                   const r = results[t]
                   const m = r.metrics
                   return (
@@ -316,7 +330,7 @@ export function SetupApp(): React.JSX.Element {
                     </div>
                   )
                 })}
-              {results && !results.model1.calibration && !results.model2.calibration && (
+              {results && !results.model1.calibration && (liveEyes || !results.model2.calibration) && (
                 <p className="hint">Ojos still works without eye tracking; questions will just be less specific.</p>
               )}
             </div>

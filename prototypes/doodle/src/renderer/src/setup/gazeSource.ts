@@ -16,8 +16,27 @@ export interface GazeSource {
   stop(): void
 }
 
-/** Session clock for calibration, in integer microseconds. */
-export const nowUs = (): number => Math.round(performance.now() * 1000)
+/** Shared session clock (same origin in every window), in integer microseconds. */
+export const nowUs = (): number =>
+  Math.round((performance.timeOrigin + performance.now() - window.vision.epochMs()) * 1000)
+
+/** Real eyes: raw observations relayed from the hidden vision window's VisionSession. */
+export function liveGaze(): GazeSource {
+  let off: (() => void) | null = null
+  return {
+    kind: 'live',
+    label: 'Live eye tracking',
+    start(observe) {
+      off = window.vision.onObservation((tracker, timeUs, raw) => {
+        if (tracker === 'model1' || tracker === 'model2') observe(tracker, timeUs, raw)
+      })
+    },
+    stop() {
+      off?.()
+      off = null
+    }
+  }
+}
 
 export function simulatedGaze(opts: { autopilot?: () => [number, number] | null } = {}): GazeSource {
   let pointer: [number, number] = [0.5, 0.5]
@@ -57,10 +76,7 @@ export function simulatedGaze(opts: { autopilot?: () => [number, number] | null 
   }
 }
 
-/**
- * Picks the source. Live wiring (VisionSession + workers) is the next integration step; until
- * the model assets exist on this machine, calibration runs on the simulated source.
- */
-export function pickGazeSource(opts: { autopilot?: () => [number, number] | null } = {}): GazeSource {
-  return simulatedGaze(opts)
+/** Live when the eye model is running in the vision window; simulated (mouse) otherwise. */
+export function pickGazeSource(opts: { live: boolean; autopilot?: () => [number, number] | null }): GazeSource {
+  return opts.live && !opts.autopilot ? liveGaze() : simulatedGaze(opts)
 }

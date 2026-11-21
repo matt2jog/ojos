@@ -8,16 +8,21 @@ The user never has to type the question. Their face says *that* they might be st
 
 ## User flow (MVP)
 
-1. **Confusion event:** the mascot slides in at the right edge of the screen. It's a dark pill with two eyes and a Google-colored "j" nose, so the face reads "o j o". The pupils follow the pointer (gaze later), and it blinks. The rest of the screen stays untouched.
-2. **Suggested questions:** a fast model reads the screenshot and gaze and guesses 2–3 questions specific to what's on screen. They pop out above the mascot as Notion-style dark pills with shortcuts (⌥1/⌥2/⌥3, Alt on Windows), plus "Something else? Just explain". While loading, a shimmer pill shows and the nose's spark spins.
-3. **Pick one:** click a pill, press its shortcut, or click the mascot for a generic explanation. The eyes squint happily, a rainbow glow appears around the screen and the side panel slides in.
-4. **Answer:** the explainer streams a short text answer into the panel, with the chosen question as the heading.
-5. **Close:** "Got it" or Cmd/Ctrl+Shift+X.
-6. **Ignored:** the mascot slides away after 15 s (hovering pauses this) and nothing is sent.
+1. **Confusion event:** the mascot appears near the right edge of the screen. It's a dark pill with two eyes and a Google-colored "j" nose, so the face reads "o j o". The pupils follow the pointer (gaze later), and it blinks. The rest of the screen stays untouched.
+2. **Suggested questions:** a fast model reads the screenshot and gaze and guesses 2–3 questions specific to what's on screen. They show in a thought bubble above the mascot, one at a time, ending with "Something else? Just explain". The bubble moves to the next one every few seconds (hovering pauses it), and the dots and arrow under the text switch by hand. While loading, shimmer text shows and the nose's spark spins.
+3. **Pick one:** click the question in the bubble, press its shortcut (⌥1/⌥2/⌥3, Alt on Windows; these work whichever question is showing), or click the mascot for a generic explanation. The eyes squint happily and a rainbow glow appears around the screen while the answer comes in.
+4. **Answer:** the mascot stays, and its bubble becomes the conversation: the explainer streams a short text answer into it, with the chosen question shown as the user's chat message on the right and the answer below it.
+5. **Follow up:** type in the box under the answer, or click one of the suggestions that were not asked yet (they keep showing one at a time above the box). Each follow-up is answered with the earlier turns as context and is added below them.
+6. **Close:** the × under the mascot, or Cmd/Ctrl+Shift+X. Clicking the mascot hides or shows the bubble without ending the conversation.
+7. **Ignored:** the mascot goes away after 15 s (hovering pauses this) and nothing is sent.
 
-A new confusion event shows the mascot again without closing an answer the user is reading. Picking a new question replaces the open answer. Follow-ups that build on a previous question are out of scope for the MVP.
+**Chat.** The chat button under the mascot opens the same conversation bubble with an empty thread, so the user can type their own question. Cmd/Ctrl+Shift+J and "Chat with Ojos" in the tray open it without a confusion event. The core rule still holds: typing is always optional.
 
-The overlay is a transparent, always-on-top, click-through window. Only the mascot, pills and panel take clicks. It is excluded from screen capture.
+**Moving it.** Drag the mascot by its face. The bubble opens above or below and to the left or right, toward whichever side has more room, and the position is remembered (`localStorage`).
+
+A new confusion event during an open conversation does not close it. The new suggestions replace the ones above the chat box, and picking one continues the thread.
+
+The overlay is a transparent, always-on-top, click-through window. Only the mascot and its bubble take clicks. It never takes keyboard focus, except while the user types in the chat box. It is excluded from screen capture.
 
 **Secondary feature, off by default:** live doodles. The explainer can also stream drawing commands, and hand-drawn circles, arrows, underlines, highlights and labels animate on the real screen in step with the text. Enable it with `--doodles`.
 
@@ -55,6 +60,7 @@ npm run dev:doodles
 | --- | --- |
 | Cmd+Shift+O | Fake confusion event. Point the mouse at the confusing thing first |
 | Option/Alt+1, 2, 3 | Pick a suggested question (only while the mascot is showing) |
+| Cmd+Shift+J | Chat with Ojos |
 | Cmd+Shift+X | Dismiss |
 | Cmd+Shift+Q | Quit |
 
@@ -63,11 +69,10 @@ Stubs to replace: the hotkey stands in for confusion events, the mouse pointer f
 | Path | Role |
 | --- | --- |
 | `src/shared/commands.ts` | Contract types (source of truth for the tables below) |
-| `src/main/index.ts` | Overlay window, hotkeys, nudge → suggest → explain flow, run cancellation |
+| `src/main/index.ts` | Overlay window, hotkeys, nudge → suggest → explain flow, conversation state, run cancellation |
 | `src/main/gemini.ts` | Both prompts and the stream parser, to be moved to the backend |
 | `src/main/mock.ts` | Canned questions and answer |
-| `src/renderer/src/components/Nudge.tsx` | Mascot and question pills |
-| `src/renderer/src/components/Panel.tsx` | Answer panel |
+| `src/renderer/src/components/Companion.tsx` | Mascot, thought bubble, conversation and chat box, dragging |
 | `src/renderer/src/components/Logo.tsx` | "ojos" wordmark |
 | `src/renderer/src/doodle/engine.ts` | Doodle pen animation, kept outside React |
 
@@ -88,10 +93,10 @@ Two calls per confusion event. Both get the screenshot of the display the overla
 | Field | Shown as | Notes |
 | --- | --- | --- |
 | `stuck_on` | Not shown yet | Noun phrase naming the actual thing on screen, 7 words or fewer. Available for the answer panel or logging |
-| `questions` | Question pills with ⌥1–3 | At most 3, each 8 words or fewer, specific to what's on screen. Empty leaves only "Explain what I'm looking at" |
+| `questions` | Thought bubble, one at a time, with ⌥1–3 | At most 3, each 8 words or fewer, specific to what's on screen. Empty leaves only "Explain what I'm looking at" |
 | `summary` | Not shown yet | Optional gist of the answer; matches the AI-system pipeline's summary output |
 
-On error the overlay shows only the "Explain what I'm looking at" pill.
+On error the thought bubble shows only "Explain what I'm looking at".
 
 **2. Explain** (stronger model, default `gemini-4-neon`). Called with the chosen question, or none for a generic explanation. Streams newline-delimited JSON, one command per line, applied in order:
 
@@ -104,8 +109,8 @@ On error the overlay shows only the "Explain what I'm looking at" pill.
 
 | Command | Fields | Notes |
 | --- | --- | --- |
-| `title` | `title` | The question being answered. Sent first |
-| `say` | `say` | One short sentence, typed into the panel. 2–5 per answer |
+| `title` | `title` | The question being answered. Sent first. Shown as the user's message only when the user did not pick or type a question |
+| `say` | `say` | One short sentence, typed into the bubble. 2–5 per answer |
 | `draw` | see below | Doodles only. Skipped unless enabled |
 
 Draw commands accept an optional `color` of `red`, `blue`, `green` or `yellow`:
@@ -119,6 +124,8 @@ Draw commands accept an optional `color` of `red`, `blue`, `green` or `yellow`:
 | `label` | `at`, `text` | Handwritten, 2–4 words, in empty space |
 
 Each `draw` should come before the `say` that refers to it. Unknown or malformed lines are skipped. Over SSE, send each command as one `data:` line.
+
+**Follow-ups** use the same call and the same output. The request then carries the conversation so far: the first screenshot with its question, each earlier answer, and the new question with a screenshot taken when it was typed (the screen may have changed). A suggestion picked from a later confusion event uses that event's screenshot. Only the first and the newest screenshot are sent. The main process keeps this history and drops it on dismiss.
 
 ## Integration points
 
@@ -140,6 +147,8 @@ Each `draw` should come before the `say` that refers to it. Unknown or malformed
 
 - Test real Gemini: model access for `gemini-4-hydrogen` and `gemini-4-neon` on our keys, suggestion latency, question quality.
 - Confirm clicks register on the non-focusable overlay on macOS. The ⌥1–3 shortcuts work either way.
+- Test typing in the chat box on macOS and Windows. The overlay becomes focusable only while the box is in use, and focus does not return to the previous app by itself when the box closes.
+- Test follow-ups against real Gemini (only the mock has been run).
 - Check whether screen recorders capture the overlay (content protection may hide it from the demo video). Add a switch if needed.
 - Test on Windows, including mixed-DPI setups.
 - Doodles: verify placement accuracy before enabling them in the demo.

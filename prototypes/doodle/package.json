@@ -9,7 +9,9 @@
     "mock:doodles": "electron-vite dev -- --mock --doodles",
     "dev:doodles": "electron-vite dev -- --doodles",
     "build": "electron-vite build",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "start": "electron-vite build && electron .",
+    "app": "node scripts/make-launcher.mjs"
   },
   "keywords": [],
   "type": "commonjs",
@@ -27,5 +29,6 @@
     "@google/genai": "^3.6.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
-  }
+  },
+  "productName": "Ojos"
 }

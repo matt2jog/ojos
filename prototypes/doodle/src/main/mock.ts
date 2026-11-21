@@ -10,6 +10,8 @@ export const MOCK_SUGGESTIONS: Suggestions = {
 export async function streamMock(opts: {
   gaze: Gaze
   question?: string
+  /** Follow-up in an open conversation: a shorter canned reply. */
+  followUp?: boolean
   doodles: boolean
   isCurrent: () => boolean
   onCmd: (cmd: Cmd) => void
@@ -26,7 +28,12 @@ export async function streamMock(opts: {
     { draw: 'underline', from: [c(x - 100), c(y + 40)], to: [c(x + 100), c(y + 40)], color: 'green' },
     { say: 'Check for an empty result before using it, and the error goes away.' }
   ]
-  for (const cmd of script) {
+  const followUp: Cmd[] = [
+    { title: opts.question ?? 'Tell me more' },
+    { say: 'Mock follow-up: the function only returns a user when the ID matches one.' },
+    { say: 'So add an "if user is None" check right after the call, before reading the name.' }
+  ]
+  for (const cmd of opts.followUp ? followUp : script) {
     const isDraw = 'draw' in cmd
     if (isDraw && !opts.doodles) continue
     await new Promise((r) => setTimeout(r, isDraw ? 700 : 400))

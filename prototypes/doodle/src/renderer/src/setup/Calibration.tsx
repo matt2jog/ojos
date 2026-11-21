@@ -11,6 +11,8 @@ export type CalibrationOutcome = { kind: 'done'; results: Record<Tracker, FitRes
 
 interface Props {
   geometry: CalibrationGeometry
+  /** true when the eye model is running, so the dots are followed with real eyes */
+  live: boolean
   autopilot?: boolean
   onDone(outcome: CalibrationOutcome): void
 }
@@ -21,14 +23,14 @@ const sleepUntil = async (us: number): Promise<void> => {
 }
 
 /** Full-screen 9 + 5 target calibration. Rendering is ours; the math is EnsembleCalibration. */
-export function Calibration({ geometry, autopilot, onDone }: Props): React.JSX.Element {
+export function Calibration({ geometry, live, autopilot, onDone }: Props): React.JSX.Element {
   const [phase, setPhase] = useState<'intro' | 'running' | 'fitting'>('intro')
   const [target, setTarget] = useState<{ point: [number, number]; index: number; ms: number } | null>(null)
   const [popped, setPopped] = useState(false)
   const targetRef = useRef<[number, number] | null>(null)
   const cancelled = useRef(false)
   const sourceRef = useRef<GazeSource | null>(null)
-  if (!sourceRef.current) sourceRef.current = pickGazeSource({ autopilot: autopilot ? () => targetRef.current : undefined })
+  if (!sourceRef.current) sourceRef.current = pickGazeSource({ live, autopilot: autopilot ? () => targetRef.current : undefined })
   const source = sourceRef.current
 
   const run = async (): Promise<void> => {

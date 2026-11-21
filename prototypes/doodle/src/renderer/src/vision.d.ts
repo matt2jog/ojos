@@ -55,3 +55,67 @@ declare module '@vision/calibration.mjs' {
   export function saveTrackerProfile(storage: Storage, tracker: Tracker, geometry: CalibrationGeometry, profile: unknown): void
   export function loadTrackerProfile(storage: Storage, tracker: Tracker, geometry: CalibrationGeometry): unknown | null
 }
+
+declare module '@vision/calibration.mjs' {
+  export interface GazeMessage {
+    time_us: number
+    x_px: number | null
+    y_px: number | null
+    uncertainty_radius_px: number | null
+    valid: boolean
+  }
+  export function createGazeProjector(opts: {
+    tracker: Tracker
+    geometry: CalibrationGeometry
+    profile: unknown | null
+    sessionId: string
+    captureEpoch: number
+  }): (timeUs: number, raw: unknown) => GazeMessage
+}
+
+declare module '@vision/session.mjs' {
+  import type { CalibrationGeometry, Tracker } from '@vision/calibration.mjs'
+  export interface Packet {
+    frame: VideoFrame
+    timeUs: number
+    frameId: number
+  }
+  export interface ConfusionSample {
+    time_us: number
+    valid: boolean
+    confidence: number | null
+    confidence_raw: number | null
+    quality?: string
+  }
+  export interface IntervalEvent {
+    start_us: number
+    end_us: number
+    score: number
+  }
+  export class VisionSession {
+    constructor(opts: {
+      sessionId: string
+      captureEpoch: number
+      geometry: CalibrationGeometry
+      profiles?: Partial<Record<Tracker, unknown>>
+      workers: Partial<Record<Tracker | 'confusion', (packet: Packet) => Promise<unknown>>>
+      clockUs: () => number
+      onInterval?: (event: IntervalEvent, publishedUs: number) => void
+      onObservation?: (tracker: Tracker, timeUs: number, raw: unknown) => void
+      onError?: (error: Error, lane: string) => void
+      rates?: Record<string, number>
+    })
+    submit(frame: VideoFrame, timeUs: number, frameId: number): void
+    exportClip(clipStartUs: number, clipEndUs: number): { gaze_status: string; gaze: unknown }
+    stats(): Record<string, { rate: number; offered: number; dropped: number; delivered: number; late: number; failed: number }>
+    close(): void
+  }
+}
+
+declare module '@vision/webeyetrack.mjs' {
+  import type { CalibrationGeometry } from '@vision/calibration.mjs'
+  export function connectWebEyeTrack(
+    worker: Worker,
+    opts: { geometry: CalibrationGeometry; sessionId: string; captureEpoch: number; assetsBaseUrl?: string }
+  ): { ready: Promise<unknown>; send(packet: { frame: VideoFrame; timeUs: number }): Promise<unknown>; close(): void }
+}
