@@ -376,13 +376,8 @@ function openSettings(): void {
     openSetup({ startAt: 'settings', onDone: () => {} })
     return
   }
-  clearNudge()
-  chatPane = null
-  win.webContents.send('suggestions-dismissed')
-  win.setFocusable(false)
-  win.setIgnoreMouseEvents(true, { forward: true })
-  win.hide()
-  openSetup({
+  const overlay = win
+  const settings = openSetup({
     startAt: 'settings',
     onDone: () => {
       if (!hidden && !win.isDestroyed()) win.showInactive()
@@ -391,6 +386,18 @@ function openSettings(): void {
       if (next) runSetup(next)
     }
   })
+  settings.once('show', () => {
+    if (overlay.isDestroyed()) return
+    clearNudge()
+    chatPane = null
+    overlay.webContents.send('suggestions-dismissed')
+    overlay.setFocusable(false)
+    overlay.setIgnoreMouseEvents(true, { forward: true })
+    overlay.hide()
+  })
+  // The hidden settings renderer can miss its first paint. Show the native window directly.
+  settings.show()
+  settings.focus()
 }
 
 /** Show the setup window; the overlay is (re)created on the chosen display when it closes. */

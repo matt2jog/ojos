@@ -93,20 +93,21 @@ const SETTINGS_URL: Record<'camera' | 'screen', string> = mac
 let setupWin: BrowserWindow | null = null
 let settingsView = false
 
-export function openSetup(opts: { onDone(completed: boolean): void; startAt?: string }): BrowserWindow | null {
+export function openSetup(opts: { onDone(completed: boolean): void; startAt?: string }): BrowserWindow {
   if (setupWin && !setupWin.isDestroyed()) {
     setupWin.show()
     setupWin.focus()
     return setupWin
   }
-  settingsView = opts.startAt === 'settings'
-  setupWin = new BrowserWindow({
+  const isSettings = opts.startAt === 'settings'
+  settingsView = isSettings
+  const window = setupWin = new BrowserWindow({
     width: 880,
     height: 620,
     minWidth: 720,
     minHeight: 560,
     show: false,
-    title: settingsView ? 'Ojos Settings' : 'Ojos setup',
+    title: isSettings ? 'Ojos Settings' : 'Ojos setup',
     backgroundColor: '#0e0f12',
     titleBarStyle: mac ? 'hiddenInset' : 'default',
     autoHideMenuBar: true,
@@ -114,19 +115,29 @@ export function openSetup(opts: { onDone(completed: boolean): void; startAt?: st
   })
   completed = false
   setupDisplayId = storeGet('display.id')
-  const page = `setup.html#${opts.startAt ?? 'welcome'}`
-  if (process.env.ELECTRON_RENDERER_URL) setupWin.loadURL(`${process.env.ELECTRON_RENDERER_URL}/${page}`)
-  else setupWin.loadFile(join(__dirname, '../renderer/setup.html'), { hash: opts.startAt ?? 'welcome' })
-  setupWin.once('ready-to-show', () => {
-    setupWin?.show()
-    app.focus({ steal: true })
-  })
-  setupWin.on('closed', () => {
+  if (isSettings) {
+    window.on('page-title-updated', (event) => event.preventDefault())
+  } else {
+    window.once('ready-to-show', () => {
+      window.show()
+      if (mac) app.focus({ steal: true })
+    })
+  }
+  window.on('closed', () => {
     setupWin = null
     settingsView = false
     opts.onDone(completed)
   })
-  return setupWin
+  const step = opts.startAt ?? 'welcome'
+  const loading = process.env.ELECTRON_RENDERER_URL
+    ? window.loadURL(`${process.env.ELECTRON_RENDERER_URL}/setup.html#${step}`)
+    : window.loadFile(join(__dirname, '../renderer/setup.html'), { hash: step })
+  void loading.catch((error) => {
+    if (window.isDestroyed()) return
+    console.warn('Could not load Ojos setup:', error)
+    window.close()
+  })
+  return window
 }
 
 let completed = false
