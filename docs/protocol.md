@@ -1,6 +1,6 @@
 # Shared protocol
 
-The vision worker and desktop share this version 1 contract. The vision worker publishes intervals and gaze. The desktop owns the clock, clip export, and upload. Vast owns Gemini requests and returns results to the pane that opened the job. Both developers can integrate against the replay example below.
+The vision worker publishes intervals and gaze. The desktop owns the clock, clip export, and upload. The assistant owns Gemini requests and streams results to the pane that opened the job. The default assistant runs on local loopback. Clip jobs can use a configured remote endpoint.
 
 ## Session and time
 

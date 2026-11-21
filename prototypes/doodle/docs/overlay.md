@@ -4,7 +4,7 @@ The draggable companion opens on the selected display when the recording worker 
 
 If a new confusion interval overlaps an open chat with a completed answer, the pane offers **Explain it another way**. Clicking it asks a follow-up in the same conversation. The desktop checks the visible pane against the gaze box scaled to 75% of its width and height about its center. At least two samples in the last 1.6 seconds of the interval must exceed the IoU threshold. Set `OJOS_CHAT_GAZE_IOU` to tune it from its default of `0.08`. Intervals outside the pane can open new suggestions.
 
-The overlay is transparent and always on top. Only the companion and its controls take clicks. During capture, the desktop excludes the overlay or hides it while reading the display, depending on the platform. Start with `--doodles` to enable optional ADK drawing commands on the display.
+The overlay is transparent and always on top. Only the companion and its controls take clicks. The desktop requests capture exclusion for the overlay. Start with `--doodles` to enable optional ADK drawing commands on the display.
 
 ## Setup and controls
 

@@ -4,7 +4,7 @@ The local Python service uses Google ADK and Gemini 4 Hydrogen by default. Clip 
 
 ## Run locally
 
-Install Python 3.10+ and put FFmpeg and FFprobe on `PATH`. The desktop starts the service automatically with a generated bearer token. For a manual run from the repository root, set `GEMINI_API_KEY` and `OJOS_LOCAL_TOKEN` in the environment and run the following commands.
+Install Python 3.11+ and put FFmpeg and FFprobe on `PATH`. The desktop starts the service automatically with a generated bearer token. For a manual run from the repository root, set `GEMINI_API_KEY` and `OJOS_LOCAL_TOKEN` in the environment and run the following commands.
 
 ```sh
 python -m pip install -r agentic_system/assistant/requirements.txt
