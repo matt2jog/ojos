@@ -1,0 +1,10 @@
+{
+  "dataset": "MPIIFaceGaze",
+  "source": "https://darus.uni-stuttgart.de/api/access/datafile/198951",
+  "doi": "10.18419/DARUS-3240",
+  "md5": "dcd051b577c55701e143957edac8be51",
+  "calibrationDays": 3,
+  "maxAnchorDistanceDiagonal": 0.10,
+  "samplesPerAnchor": 5,
+  "participantCount": 15
+}

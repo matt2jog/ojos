@@ -1,0 +1,4 @@
+[
+  {"id":"wasm-smoke","name":"original","variant":"both","height":720,"rate":20,"windowName":"calibration","duration":2},
+  {"id":"webgl-smoke","name":"original","variant":"both","backend":"webgl","height":720,"rate":20,"windowName":"calibration","duration":2}
+]

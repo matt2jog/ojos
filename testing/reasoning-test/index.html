@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reasoning test</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="questions.js" defer></script>
+  <script src="test.js" defer></script>
+</head>
+<body>
+  <header class="page-header">
+    <div class="header-inner">
+      <span class="page-name">Reasoning test</span>
+      <span id="progress" class="progress"></span>
+    </div>
+  </header>
+
+  <main>
+    <section id="intro" aria-labelledby="intro-title">
+      <h1 id="intro-title">Instructions</h1>
+      <p>Work through nine short problems at your own pace. Give the requested answer, or briefly explain why you think the conditions can’t be met.</p>
+      <p>If you get stuck, mark it when it happens. You can keep working or skip to the next question.</p>
+      <div class="actions">
+        <button id="start" class="primary" type="button">Start test</button>
+      </div>
+    </section>
+
+    <section id="question" aria-labelledby="question-title" hidden>
+      <h1 id="question-title" tabindex="-1"></h1>
+      <div id="question-body" class="question-body"></div>
+      <form id="answer-form">
+        <label for="response">Your answer</label>
+        <textarea id="response" rows="3" maxlength="4000"></textarea>
+        <div class="actions">
+          <button id="submit-answer" class="primary" type="submit" disabled>Submit answer</button>
+          <button id="mark-stuck" class="secondary" type="button">Mark stuck</button>
+          <button id="skip" class="text-button" type="button">Skip question</button>
+        </div>
+        <p id="stuck-status" class="status" role="status"></p>
+      </form>
+    </section>
+
+    <section id="finished" aria-labelledby="finished-title" hidden>
+      <h1 id="finished-title" tabindex="-1">Test complete</h1>
+      <p>Download your session record to keep your answers and timestamps.</p>
+      <div class="actions">
+        <button id="download" class="primary" type="button">Download session</button>
+      </div>
+      <details class="review">
+        <summary>Review solutions</summary>
+        <ol id="solutions"></ol>
+      </details>
+    </section>
+
+    <noscript>Enable JavaScript to take the test and download your session record.</noscript>
+  </main>
+</body>
+</html>

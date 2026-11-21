@@ -1,0 +1,4 @@
+[
+  {"id":"original-wet-one-step","name":"original","variant":"both","height":720,"rate":20,"windowName":"calibration","adapt":true},
+  {"id":"repeat-wet-one-step","name":"repeat","variant":"both","height":720,"rate":20,"windowName":"calibration","adapt":true}
+]

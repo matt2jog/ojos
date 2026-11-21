@@ -1,0 +1,1221 @@
+{
+  "experiment": "MPIIFaceGaze still-image calibration proxy v1",
+  "config": {
+    "dataset": "MPIIFaceGaze",
+    "source": "https://darus.uni-stuttgart.de/api/access/datafile/198951",
+    "doi": "10.18419/DARUS-3240",
+    "md5": "dcd051b577c55701e143957edac8be51",
+    "calibrationDays": 3,
+    "maxAnchorDistanceDiagonal": 0.1,
+    "samplesPerAnchor": 5,
+    "participantCount": 15
+  },
+  "ridgeAlpha": 0.05,
+  "sourceImages": 37667,
+  "resolvedValidLabels": 37417,
+  "featureUsableImages": 37238,
+  "passedInitialGate": 4,
+  "fittedParticipants": 14,
+  "participants": 15,
+  "pairedLaterImages": 28696,
+  "laterFramesPaired": 28636,
+  "pairedCoverage": {
+    "personal": 0.6626359074435462,
+    "leaveOnePersonOut": 0.8830847504878728,
+    "center": 0.9979091162531363
+  },
+  "qualifiedValidLaterPredictions": 4304,
+  "qualifiedWithinInitialRadius": 1253,
+  "meanParticipantMedianDiagonalRatio": 0.19959647144854126,
+  "qualifiedMedianParticipantLaterDiagonalRatio": 0.17261071895708835,
+  "pairedLaterDays": {
+    "personal": {
+      "medianPx": 309.3872416291963,
+      "p80Px": 533.2999997082525,
+      "medianDiagonalRatio": 0.18835148107903307,
+      "p80DiagonalRatio": 0.3216055256639222
+    },
+    "leaveOnePersonOut": {
+      "medianPx": 231.01893504222946,
+      "p80Px": 364.8148965275538,
+      "medianDiagonalRatio": 0.14084388012037924,
+      "p80DiagonalRatio": 0.21857733209415667
+    },
+    "center": {
+      "medianPx": 438.3223694706931,
+      "p80Px": 614.2821013182787,
+      "medianDiagonalRatio": 0.26631318793135383,
+      "p80DiagonalRatio": 0.37361257859997776
+    }
+  },
+  "perPerson": [
+    {
+      "person": "p00",
+      "screen": [
+        1280,
+        800
+      ],
+      "totalImages": 2927,
+      "resolutionExcluded": 0,
+      "outOfScreenLabels": 0,
+      "eligibleImages": 2927,
+      "featuresUsable": 2918,
+      "featureRejectReasons": {
+        "blink": 9
+      },
+      "cameraResolution": "1280x720",
+      "fitDays": [
+        "day01",
+        "day02",
+        "day03"
+      ],
+      "laterDays": 36,
+      "fitAnchorCounts": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "validationAnchorCounts": [
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "gate": {
+        "usable": 5,
+        "total": 5,
+        "medianErrorPx": 177.51133639063232,
+        "uncertaintyRadiusPx": 222.1456317168663,
+        "thresholdPx": 120.75495849032451,
+        "passed": false
+      },
+      "laterImages": 2634,
+      "personal": {
+        "predicted": 2625,
+        "valid": 1456,
+        "cover": 0.5527714502657555,
+        "withinInitialRadius": 397,
+        "medianPx": 374.7091908544792,
+        "p80Px": 538.4754051651562,
+        "medianDiagonalRatio": 0.24824434245290405,
+        "p80DiagonalRatio": 0.3567392424441446
+      },
+      "leaveOnePersonOut": {
+        "predicted": 2625,
+        "valid": 2183,
+        "cover": 0.8287775246772969,
+        "withinInitialRadius": null,
+        "medianPx": 169.32165034441942,
+        "p80Px": 265.2968558233268,
+        "medianDiagonalRatio": 0.11217536900266423,
+        "p80DiagonalRatio": 0.17575881546567457
+      },
+      "center": {
+        "predicted": 2625,
+        "valid": 2625,
+        "cover": 0.9965831435079726,
+        "withinInitialRadius": null,
+        "medianPx": 402.8877014752374,
+        "p80Px": 566.0198724033163,
+        "medianDiagonalRatio": 0.26691256840274186,
+        "p80DiagonalRatio": 0.3749874154931161
+      }
+    },
+    {
+      "person": "p01",
+      "screen": [
+        1440,
+        900
+      ],
+      "totalImages": 2904,
+      "resolutionExcluded": 7,
+      "outOfScreenLabels": 0,
+      "eligibleImages": 2897,
+      "featuresUsable": 2897,
+      "featureRejectReasons": {},
+      "cameraResolution": "1280x720",
+      "fitDays": [
+        "day01",
+        "day02",
+        "day03"
+      ],
+      "laterDays": 64,
+      "fitAnchorCounts": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "validationAnchorCounts": [
+        5,
+        5,
+        5,
+        5,
+        4
+      ],
+      "gate": {
+        "usable": 5,
+        "total": 5,
+        "medianErrorPx": 128.41652530499198,
+        "uncertaintyRadiusPx": 185.33368727398602,
+        "thresholdPx": 135.8493283016151,
+        "passed": true
+      },
+      "laterImages": 2745,
+      "personal": {
+        "predicted": 2745,
+        "valid": 1792,
+        "cover": 0.6528233151183971,
+        "withinInitialRadius": 696,
+        "medianPx": 275.2205061826738,
+        "p80Px": 457.6245716726929,
+        "medianDiagonalRatio": 0.16207397393772863,
+        "p80DiagonalRatio": 0.2694894865621517
+      },
+      "leaveOnePersonOut": {
+        "predicted": 2745,
+        "valid": 2344,
+        "cover": 0.8539162112932605,
+        "withinInitialRadius": null,
+        "medianPx": 304.2060545683917,
+        "p80Px": 433.8457181447894,
+        "medianDiagonalRatio": 0.17914320718199683,
+        "p80DiagonalRatio": 0.2554864119351742
+      },
+      "center": {
+        "predicted": 2745,
+        "valid": 2745,
+        "cover": 1,
+        "withinInitialRadius": null,
+        "medianPx": 445.9063803086922,
+        "p80Px": 637.5965019554105,
+        "medianDiagonalRatio": 0.2625887876714019,
+        "p80DiagonalRatio": 0.37547274465122565
+      }
+    },
+    {
+      "person": "p02",
+      "screen": [
+        1280,
+        800
+      ],
+      "totalImages": 2916,
+      "resolutionExcluded": 0,
+      "outOfScreenLabels": 5,
+      "eligibleImages": 2911,
+      "featuresUsable": 2908,
+      "featureRejectReasons": {
+        "blink": 3
+      },
+      "cameraResolution": "1280x720",
+      "fitDays": [
+        "day01",
+        "day02",
+        "day03"
+      ],
+      "laterDays": 36,
+      "fitAnchorCounts": [
+        5,
+        5,
+        5,
+        4,
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "validationAnchorCounts": [
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "gate": {
+        "usable": 5,
+        "total": 5,
+        "medianErrorPx": 143.71516331298272,
+        "uncertaintyRadiusPx": 186.766493597413,
+        "thresholdPx": 120.75495849032451,
+        "passed": false
+      },
+      "laterImages": 2749,
+      "personal": {
+        "predicted": 2746,
+        "valid": 1998,
+        "cover": 0.7268097489996362,
+        "withinInitialRadius": 926,
+        "medianPx": 226.09123514386386,
+        "p80Px": 355.7051483627682,
+        "medianDiagonalRatio": 0.14978514371282195,
+        "p80DiagonalRatio": 0.2356541894824263
+      },
+      "leaveOnePersonOut": {
+        "predicted": 2746,
+        "valid": 2554,
+        "cover": 0.9290651145871226,
+        "withinInitialRadius": null,
+        "medianPx": 187.01048679891858,
+        "p80Px": 286.78623245302765,
+        "medianDiagonalRatio": 0.12389419971613191,
+        "p80DiagonalRatio": 0.18999549900951282
+      },
+      "center": {
+        "predicted": 2746,
+        "valid": 2746,
+        "cover": 0.9989086940705711,
+        "withinInitialRadius": null,
+        "medianPx": 404.0822931137187,
+        "p80Px": 569.9407863980257,
+        "medianDiagonalRatio": 0.2677039837804065,
+        "p80DiagonalRatio": 0.3775850158194156
+      }
+    },
+    {
+      "person": "p03",
+      "screen": [
+        1440,
+        900
+      ],
+      "totalImages": 2929,
+      "resolutionExcluded": 0,
+      "outOfScreenLabels": 0,
+      "eligibleImages": 2929,
+      "featuresUsable": 2925,
+      "featureRejectReasons": {
+        "blink": 4
+      },
+      "cameraResolution": "1280x720",
+      "fitDays": [
+        "day01",
+        "day02",
+        "day03"
+      ],
+      "laterDays": 62,
+      "fitAnchorCounts": [
+        3,
+        5,
+        5,
+        5,
+        2,
+        5,
+        5,
+        5,
+        5
+      ],
+      "validationAnchorCounts": [
+        5,
+        5,
+        5,
+        5,
+        3
+      ],
+      "gate": {
+        "usable": 5,
+        "total": 5,
+        "medianErrorPx": 189.48866833004752,
+        "uncertaintyRadiusPx": 276.61858370127857,
+        "thresholdPx": 135.8493283016151,
+        "passed": false
+      },
+      "laterImages": 2826,
+      "personal": {
+        "predicted": 2822,
+        "valid": 1923,
+        "cover": 0.6804670912951167,
+        "withinInitialRadius": 762,
+        "medianPx": 394.68115545371177,
+        "p80Px": 618.1056536122373,
+        "medianDiagonalRatio": 0.2324228822552195,
+        "p80DiagonalRatio": 0.3639948235827317
+      },
+      "leaveOnePersonOut": {
+        "predicted": 2822,
+        "valid": 2161,
+        "cover": 0.7646850672328379,
+        "withinInitialRadius": null,
+        "medianPx": 253.96195309003485,
+        "p80Px": 391.51717743862946,
+        "medianDiagonalRatio": 0.14955507326539536,
+        "p80DiagonalRatio": 0.23055965448390062
+      },
+      "center": {
+        "predicted": 2822,
+        "valid": 2822,
+        "cover": 0.9985845718329794,
+        "withinInitialRadius": null,
+        "medianPx": 451.27652210794747,
+        "p80Px": 637.0774059561057,
+        "medianDiagonalRatio": 0.26575119818392645,
+        "p80DiagonalRatio": 0.3751670553963463
+      }
+    },
+    {
+      "person": "p04",
+      "screen": [
+        1280,
+        800
+      ],
+      "totalImages": 2860,
+      "resolutionExcluded": 0,
+      "outOfScreenLabels": 0,
+      "eligibleImages": 2860,
+      "featuresUsable": 2859,
+      "featureRejectReasons": {
+        "blink": 1
+      },
+      "cameraResolution": "1280x720",
+      "fitDays": [
+        "day01",
+        "day02",
+        "day03"
+      ],
+      "laterDays": 22,
+      "fitAnchorCounts": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "validationAnchorCounts": [
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "gate": {
+        "usable": 5,
+        "total": 5,
+        "medianErrorPx": 122.56831629039998,
+        "uncertaintyRadiusPx": 154.93661218516277,
+        "thresholdPx": 120.75495849032451,
+        "passed": false
+      },
+      "laterImages": 2496,
+      "personal": {
+        "predicted": 2495,
+        "valid": 2021,
+        "cover": 0.8096955128205128,
+        "withinInitialRadius": 740,
+        "medianPx": 208.4459614111157,
+        "p80Px": 321.7628837712081,
+        "medianDiagonalRatio": 0.13809517324479387,
+        "p80DiagonalRatio": 0.21316748416388343
+      },
+      "leaveOnePersonOut": {
+        "predicted": 2495,
+        "valid": 2334,
+        "cover": 0.9350961538461539,
+        "withinInitialRadius": null,
+        "medianPx": 200.9574285020063,
+        "p80Px": 293.52725589023385,
+        "medianDiagonalRatio": 0.13313403011478522,
+        "p80DiagonalRatio": 0.19446141810483264
+      },
+      "center": {
+        "predicted": 2495,
+        "valid": 2495,
+        "cover": 0.9995993589743589,
+        "withinInitialRadius": null,
+        "medianPx": 400.3279905277671,
+        "p80Px": 563.1579552421529,
+        "medianDiagonalRatio": 0.26521676329164956,
+        "p80DiagonalRatio": 0.37309139916587414
+      }
+    },
+    {
+      "person": "p05",
+      "screen": [
+        1440,
+        900
+      ],
+      "totalImages": 2870,
+      "resolutionExcluded": 0,
+      "outOfScreenLabels": 0,
+      "eligibleImages": 2870,
+      "featuresUsable": 2870,
+      "featureRejectReasons": {},
+      "cameraResolution": "1280x720",
+      "fitDays": [
+        "day01",
+        "day02",
+        "day03"
+      ],
+      "laterDays": 35,
+      "fitAnchorCounts": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "validationAnchorCounts": [
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "gate": {
+        "usable": 5,
+        "total": 5,
+        "medianErrorPx": 153.58291602753897,
+        "uncertaintyRadiusPx": 172.67299634904242,
+        "thresholdPx": 135.8493283016151,
+        "passed": false
+      },
+      "laterImages": 2473,
+      "personal": {
+        "predicted": 2473,
+        "valid": 1762,
+        "cover": 0.7124949454104327,
+        "withinInitialRadius": 614,
+        "medianPx": 251.40514827052988,
+        "p80Px": 396.05060498981936,
+        "medianDiagonalRatio": 0.14804940232747016,
+        "p80DiagonalRatio": 0.23322933425802492
+      },
+      "leaveOnePersonOut": {
+        "predicted": 2473,
+        "valid": 2382,
+        "cover": 0.9632025879498585,
+        "withinInitialRadius": null,
+        "medianPx": 220.7232056858643,
+        "p80Px": 324.0625801579681,
+        "medianDiagonalRatio": 0.12998118338623552,
+        "p80DiagonalRatio": 0.19083647108713184
+      },
+      "center": {
+        "predicted": 2473,
+        "valid": 2473,
+        "cover": 1,
+        "withinInitialRadius": null,
+        "medianPx": 447.0195745154792,
+        "p80Px": 629.6450244686159,
+        "medianDiagonalRatio": 0.2632443340598628,
+        "p80DiagonalRatio": 0.37079021727404754
+      }
+    },
+    {
+      "person": "p06",
+      "screen": [
+        1680,
+        1050
+      ],
+      "totalImages": 2877,
+      "resolutionExcluded": 0,
+      "outOfScreenLabels": 0,
+      "eligibleImages": 2877,
+      "featuresUsable": 2876,
+      "featureRejectReasons": {
+        "blink": 1
+      },
+      "cameraResolution": "1280x720",
+      "fitDays": [
+        "day01",
+        "day02",
+        "day03"
+      ],
+      "laterDays": 59,
+      "fitAnchorCounts": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "validationAnchorCounts": [
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "gate": {
+        "usable": 5,
+        "total": 5,
+        "medianErrorPx": 181.47059352086566,
+        "uncertaintyRadiusPx": 239.78096348153588,
+        "thresholdPx": 158.49088301855093,
+        "passed": false
+      },
+      "laterImages": 2672,
+      "personal": {
+        "predicted": 2671,
+        "valid": 1960,
+        "cover": 0.7335329341317365,
+        "withinInitialRadius": 610,
+        "medianPx": 362.63586111770934,
+        "p80Px": 588.9904157288286,
+        "medianDiagonalRatio": 0.18304440190431082,
+        "p80DiagonalRatio": 0.2972993295317252
+      },
+      "leaveOnePersonOut": {
+        "predicted": 2671,
+        "valid": 2404,
+        "cover": 0.8997005988023952,
+        "withinInitialRadius": null,
+        "medianPx": 267.3881189838841,
+        "p80Px": 415.79784498865956,
+        "medianDiagonalRatio": 0.1349670663151455,
+        "p80DiagonalRatio": 0.20987849247580584
+      },
+      "center": {
+        "predicted": 2671,
+        "valid": 2671,
+        "cover": 0.999625748502994,
+        "withinInitialRadius": null,
+        "medianPx": 535.6906756702043,
+        "p80Px": 743.0696468030436,
+        "medianDiagonalRatio": 0.2703957050236148,
+        "p80DiagonalRatio": 0.37507250014681
+      }
+    },
+    {
+      "person": "p07",
+      "screen": [
+        1440,
+        900
+      ],
+      "totalImages": 2843,
+      "resolutionExcluded": 0,
+      "outOfScreenLabels": 228,
+      "eligibleImages": 2615,
+      "featuresUsable": 2598,
+      "featureRejectReasons": {
+        "blink": 4,
+        "excessive_pose": 4,
+        "tracking_lost": 9
+      },
+      "cameraResolution": "1280x720",
+      "fitDays": [
+        "day01",
+        "day02",
+        "day03"
+      ],
+      "laterDays": 53,
+      "fitAnchorCounts": [
+        5,
+        5,
+        3,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "validationAnchorCounts": [
+        5,
+        4,
+        5,
+        5,
+        5
+      ],
+      "gate": {
+        "usable": 4,
+        "total": 5,
+        "medianErrorPx": 97.18095344931467,
+        "uncertaintyRadiusPx": 157.41873867045564,
+        "thresholdPx": 135.8493283016151,
+        "passed": false
+      },
+      "laterImages": 2485,
+      "personal": {
+        "predicted": 2468,
+        "valid": 1200,
+        "cover": 0.482897384305835,
+        "withinInitialRadius": 153,
+        "medianPx": 495.7502610886605,
+        "p80Px": 789.5746933348606,
+        "medianDiagonalRatio": 0.2919412365369887,
+        "p80DiagonalRatio": 0.46497083391201344
+      },
+      "leaveOnePersonOut": {
+        "predicted": 2468,
+        "valid": 2047,
+        "cover": 0.8237424547283703,
+        "withinInitialRadius": null,
+        "medianPx": 370.07306673692176,
+        "p80Px": 538.5470909804333,
+        "medianDiagonalRatio": 0.21793148121588296,
+        "p80DiagonalRatio": 0.31714376373491754
+      },
+      "center": {
+        "predicted": 2468,
+        "valid": 2468,
+        "cover": 0.993158953722334,
+        "withinInitialRadius": null,
+        "medianPx": 454.10624835206283,
+        "p80Px": 642.2162357504135,
+        "medianDiagonalRatio": 0.26741758919490455,
+        "p80DiagonalRatio": 0.3781932491117239
+      }
+    },
+    {
+      "person": "p08",
+      "screen": [
+        1440,
+        900
+      ],
+      "totalImages": 2767,
+      "resolutionExcluded": 0,
+      "outOfScreenLabels": 0,
+      "eligibleImages": 2767,
+      "featuresUsable": 2738,
+      "featureRejectReasons": {
+        "excessive_pose": 19,
+        "tracking_lost": 6,
+        "blink": 4
+      },
+      "cameraResolution": "1280x720",
+      "fitDays": [
+        "day01",
+        "day02",
+        "day03"
+      ],
+      "laterDays": 44,
+      "fitAnchorCounts": [
+        0,
+        1,
+        2,
+        5,
+        0,
+        4,
+        2,
+        2,
+        2
+      ],
+      "validationAnchorCounts": [
+        3,
+        5,
+        1,
+        2,
+        1
+      ],
+      "gate": null,
+      "laterImages": 2732,
+      "personal": null,
+      "leaveOnePersonOut": {
+        "predicted": 2703,
+        "valid": 2262,
+        "cover": 0.8279648609077599,
+        "withinInitialRadius": null,
+        "medianPx": 299.34070700459375,
+        "p80Px": 484.240075304271,
+        "medianDiagonalRatio": 0.17627806379137465,
+        "p80DiagonalRatio": 0.2851630295759152
+      },
+      "center": {
+        "predicted": 2703,
+        "valid": 2703,
+        "cover": 0.989385065885798,
+        "withinInitialRadius": null,
+        "medianPx": 450.926268917658,
+        "p80Px": 629.2313539308336,
+        "medianDiagonalRatio": 0.26554493838438625,
+        "p80DiagonalRatio": 0.3705466117778974
+      }
+    },
+    {
+      "person": "p09",
+      "screen": [
+        1440,
+        900
+      ],
+      "totalImages": 2719,
+      "resolutionExcluded": 0,
+      "outOfScreenLabels": 0,
+      "eligibleImages": 2719,
+      "featuresUsable": 2713,
+      "featureRejectReasons": {
+        "blink": 6
+      },
+      "cameraResolution": "1280x720",
+      "fitDays": [
+        "day01",
+        "day02",
+        "day03"
+      ],
+      "laterDays": 17,
+      "fitAnchorCounts": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "validationAnchorCounts": [
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "gate": {
+        "usable": 2,
+        "total": 5,
+        "medianErrorPx": 397.7008725138693,
+        "uncertaintyRadiusPx": 610.2095382857757,
+        "thresholdPx": 135.8493283016151,
+        "passed": false
+      },
+      "laterImages": 1845,
+      "personal": {
+        "predicted": 1843,
+        "valid": 717,
+        "cover": 0.3886178861788618,
+        "withinInitialRadius": 586,
+        "medianPx": 617.6454316288949,
+        "p80Px": 1019.2889518575782,
+        "medianDiagonalRatio": 0.3637238045123566,
+        "p80DiagonalRatio": 0.6002467378238543
+      },
+      "leaveOnePersonOut": {
+        "predicted": 1843,
+        "valid": 1709,
+        "cover": 0.9262872628726287,
+        "withinInitialRadius": null,
+        "medianPx": 238.58069735408588,
+        "p80Px": 361.8632191653747,
+        "medianDiagonalRatio": 0.14049724078098336,
+        "p80DiagonalRatio": 0.21309680287087446
+      },
+      "center": {
+        "predicted": 1843,
+        "valid": 1843,
+        "cover": 0.9989159891598915,
+        "withinInitialRadius": null,
+        "medianPx": 457.766862059717,
+        "p80Px": 630.5224024449154,
+        "medianDiagonalRatio": 0.26957327962247996,
+        "p80DiagonalRatio": 0.371306894382293
+      }
+    },
+    {
+      "person": "p10",
+      "screen": [
+        1440,
+        900
+      ],
+      "totalImages": 2194,
+      "resolutionExcluded": 0,
+      "outOfScreenLabels": 10,
+      "eligibleImages": 2184,
+      "featuresUsable": 2183,
+      "featureRejectReasons": {
+        "blink": 1
+      },
+      "cameraResolution": "1280x720",
+      "fitDays": [
+        "day01",
+        "day02",
+        "day03"
+      ],
+      "laterDays": 13,
+      "fitAnchorCounts": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "validationAnchorCounts": [
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "gate": {
+        "usable": 5,
+        "total": 5,
+        "medianErrorPx": 145.8008180680633,
+        "uncertaintyRadiusPx": 150.35770483330526,
+        "thresholdPx": 135.8493283016151,
+        "passed": false
+      },
+      "laterImages": 1667,
+      "personal": {
+        "predicted": 1666,
+        "valid": 1285,
+        "cover": 0.7708458308338332,
+        "withinInitialRadius": 362,
+        "medianPx": 262.7743151494435,
+        "p80Px": 476.7519473367603,
+        "medianDiagonalRatio": 0.15474456498807404,
+        "p80DiagonalRatio": 0.2807533630365943
+      },
+      "leaveOnePersonOut": {
+        "predicted": 1666,
+        "valid": 1530,
+        "cover": 0.9178164367126574,
+        "withinInitialRadius": null,
+        "medianPx": 256.03538291036483,
+        "p80Px": 386.43891232873364,
+        "medianDiagonalRatio": 0.1507760906064463,
+        "p80DiagonalRatio": 0.22756912656690073
+      },
+      "center": {
+        "predicted": 1666,
+        "valid": 1666,
+        "cover": 0.9994001199760048,
+        "withinInitialRadius": null,
+        "medianPx": 448.83794043311445,
+        "p80Px": 622.5242967145941,
+        "medianDiagonalRatio": 0.2643151474030679,
+        "p80DiagonalRatio": 0.36659690820551116
+      }
+    },
+    {
+      "person": "p11",
+      "screen": [
+        1280,
+        800
+      ],
+      "totalImages": 2262,
+      "resolutionExcluded": 0,
+      "outOfScreenLabels": 0,
+      "eligibleImages": 2262,
+      "featuresUsable": 2261,
+      "featureRejectReasons": {
+        "tracking_lost": 1
+      },
+      "cameraResolution": "1280x720",
+      "fitDays": [
+        "day01",
+        "day02",
+        "day03"
+      ],
+      "laterDays": 16,
+      "fitAnchorCounts": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "validationAnchorCounts": [
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "gate": {
+        "usable": 5,
+        "total": 5,
+        "medianErrorPx": 86.91303698357855,
+        "uncertaintyRadiusPx": 152.63184671996794,
+        "thresholdPx": 120.75495849032451,
+        "passed": true
+      },
+      "laterImages": 1579,
+      "personal": {
+        "predicted": 1578,
+        "valid": 1200,
+        "cover": 0.759974667511083,
+        "withinInitialRadius": 303,
+        "medianPx": 276.44955512605236,
+        "p80Px": 445.21245115765146,
+        "medianDiagonalRatio": 0.18314746397644804,
+        "p80DiagonalRatio": 0.29495265898721607
+      },
+      "leaveOnePersonOut": {
+        "predicted": 1578,
+        "valid": 1506,
+        "cover": 0.9537682077264091,
+        "withinInitialRadius": null,
+        "medianPx": 190.70956240329315,
+        "p80Px": 290.553394511239,
+        "medianDiagonalRatio": 0.1263448324027696,
+        "p80DiagonalRatio": 0.19249123888160305
+      },
+      "center": {
+        "predicted": 1578,
+        "valid": 1578,
+        "cover": 0.999366687777074,
+        "withinInitialRadius": null,
+        "medianPx": 399.7980311862627,
+        "p80Px": 555.3216177607908,
+        "medianDiagonalRatio": 0.26486566593009697,
+        "p80DiagonalRatio": 0.3678998359675878
+      }
+    },
+    {
+      "person": "p12",
+      "screen": [
+        1280,
+        800
+      ],
+      "totalImages": 1601,
+      "resolutionExcluded": 0,
+      "outOfScreenLabels": 0,
+      "eligibleImages": 1601,
+      "featuresUsable": 1496,
+      "featureRejectReasons": {
+        "tracking_lost": 105
+      },
+      "cameraResolution": "1280x720",
+      "fitDays": [
+        "day01",
+        "day02",
+        "day03"
+      ],
+      "laterDays": 4,
+      "fitAnchorCounts": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "validationAnchorCounts": [
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "gate": {
+        "usable": 5,
+        "total": 5,
+        "medianErrorPx": 193.93210758592326,
+        "uncertaintyRadiusPx": 313.77342306770333,
+        "thresholdPx": 120.75495849032451,
+        "passed": false
+      },
+      "laterImages": 648,
+      "personal": {
+        "predicted": 628,
+        "valid": 389,
+        "cover": 0.6003086419753086,
+        "withinInitialRadius": 227,
+        "medianPx": 333.4653202122706,
+        "p80Px": 543.7942560726299,
+        "medianDiagonalRatio": 0.22092033280040557,
+        "p80DiagonalRatio": 0.3602629741228896
+      },
+      "leaveOnePersonOut": {
+        "predicted": 628,
+        "valid": 529,
+        "cover": 0.816358024691358,
+        "withinInitialRadius": null,
+        "medianPx": 224.37819028496398,
+        "p80Px": 338.90998314711106,
+        "medianDiagonalRatio": 0.14865025376357843,
+        "p80DiagonalRatio": 0.2245274147805806
+      },
+      "center": {
+        "predicted": 628,
+        "valid": 628,
+        "cover": 0.9691358024691358,
+        "withinInitialRadius": null,
+        "medianPx": 396.79776596515944,
+        "p80Px": 548.5727675786553,
+        "medianDiagonalRatio": 0.2628779941964555,
+        "p80DiagonalRatio": 0.36342873166412276
+      }
+    },
+    {
+      "person": "p13",
+      "screen": [
+        1280,
+        800
+      ],
+      "totalImages": 1498,
+      "resolutionExcluded": 0,
+      "outOfScreenLabels": 0,
+      "eligibleImages": 1498,
+      "featuresUsable": 1496,
+      "featureRejectReasons": {
+        "tracking_lost": 1,
+        "blink": 1
+      },
+      "cameraResolution": "1280x720",
+      "fitDays": [
+        "day01",
+        "day02",
+        "day03"
+      ],
+      "laterDays": 9,
+      "fitAnchorCounts": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "validationAnchorCounts": [
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "gate": {
+        "usable": 5,
+        "total": 5,
+        "medianErrorPx": 79.44692980536092,
+        "uncertaintyRadiusPx": 108.16601546463815,
+        "thresholdPx": 120.75495849032451,
+        "passed": true
+      },
+      "laterImages": 1117,
+      "personal": {
+        "predicted": 1116,
+        "valid": 781,
+        "cover": 0.6991942703670546,
+        "withinInitialRadius": 113,
+        "medianPx": 278.8489217908898,
+        "p80Px": 481.0446259578032,
+        "medianDiagonalRatio": 0.18473704121275153,
+        "p80DiagonalRatio": 0.3186914273148274
+      },
+      "leaveOnePersonOut": {
+        "predicted": 1116,
+        "valid": 1016,
+        "cover": 0.909579230080573,
+        "withinInitialRadius": null,
+        "medianPx": 218.98265405614205,
+        "p80Px": 327.59708026953365,
+        "medianDiagonalRatio": 0.14507571816104797,
+        "p80DiagonalRatio": 0.2170326316137369
+      },
+      "center": {
+        "predicted": 1116,
+        "valid": 1116,
+        "cover": 0.999104744852283,
+        "withinInitialRadius": null,
+        "medianPx": 404.147866386326,
+        "p80Px": 569.831992783838,
+        "medianDiagonalRatio": 0.2677474259866245,
+        "p80DiagonalRatio": 0.37751294019416737
+      }
+    },
+    {
+      "person": "p14",
+      "screen": [
+        1440,
+        900
+      ],
+      "totalImages": 1500,
+      "resolutionExcluded": 0,
+      "outOfScreenLabels": 0,
+      "eligibleImages": 1500,
+      "featuresUsable": 1500,
+      "featureRejectReasons": {},
+      "cameraResolution": "1280x720",
+      "fitDays": [
+        "day01",
+        "day02",
+        "day03"
+      ],
+      "laterDays": 4,
+      "fitAnchorCounts": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "validationAnchorCounts": [
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "gate": {
+        "usable": 5,
+        "total": 5,
+        "medianErrorPx": 112.55866696465759,
+        "uncertaintyRadiusPx": 121.39754431668436,
+        "thresholdPx": 135.8493283016151,
+        "passed": true
+      },
+      "laterImages": 760,
+      "personal": {
+        "predicted": 760,
+        "valid": 531,
+        "cover": 0.6986842105263158,
+        "withinInitialRadius": 141,
+        "medianPx": 226.56413760913097,
+        "p80Px": 399.9238215024169,
+        "medianDiagonalRatio": 0.13342083641730448,
+        "p80DiagonalRatio": 0.23551022386477993
+      },
+      "leaveOnePersonOut": {
+        "predicted": 760,
+        "valid": 642,
+        "cover": 0.8447368421052631,
+        "withinInitialRadius": null,
+        "medianPx": 167.6264920982461,
+        "p80Px": 274.3890325772598,
+        "medianDiagonalRatio": 0.09871318125391318,
+        "p80DiagonalRatio": 0.16158432934938413
+      },
+      "center": {
+        "predicted": 760,
+        "valid": 760,
+        "cover": 1,
+        "withinInitialRadius": null,
+        "medianPx": 457.20290881377775,
+        "p80Px": 633.746390203693,
+        "medianDiagonalRatio": 0.26924117448630314,
+        "p80DiagonalRatio": 0.3732054611542211
+      }
+    }
+  ]
+}
