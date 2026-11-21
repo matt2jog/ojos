@@ -113,8 +113,8 @@ try {
       return res
     }
     const model = test.mode === 'suggest'
-      ? (process.env.GEMINI_SUGGEST_MODEL || 'gemini-4-hydrogen')
-      : (process.env.GEMINI_MODEL || 'gemini-4-neon')
+      ? (process.env.GEMINI_SUGGEST_MODEL || assistant.DEFAULT_GEMINI_MODEL || 'gemini-4-hydrogen')
+      : (process.env.GEMINI_MODEL || assistant.DEFAULT_GEMINI_MODEL || 'gemini-4-neon')
     const pngBase64 = await image(test.screen)
     const turns = turnsFor(test)
     const history = turns.length ? { firstPngBase64: await image(test.firstScreen), turns } : undefined

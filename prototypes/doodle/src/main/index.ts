@@ -1,13 +1,13 @@
 // Ojos overlay prototype, main process.
-// Flow: confusion event (hotkey for now) -> mascot + suggested questions -> user picks one
+// Flow: confusion event (vision or hotkey) -> mascot + suggested questions -> user picks one
 // -> answer streams into the mascot's bubble (text only; doodles behind --doodles), and the
 // user can follow up by typing or picking another suggestion.
-// The mouse pointer stands in for gaze until the eye tracker is wired in.
+// Manual nudges can use the mouse pointer when tracked gaze is unavailable.
 import './log'
 import { app, BrowserWindow, globalShortcut, screen, desktopCapturer, ipcMain, Menu, nativeImage, shell, systemPreferences, Tray, type Display } from 'electron'
 import { join } from 'path'
 import { readFileSync, writeFileSync } from 'fs'
-import { streamGemini, suggest } from './gemini'
+import { DEFAULT_GEMINI_MODEL, MAX_HISTORY_TURNS, streamGemini, suggest, type GazeSource } from './gemini'
 import { MOCK_SUGGESTIONS, streamMock } from './mock'
 import type { Cmd, Gaze, Suggestions, Turn } from '../shared/commands'
 import { openSetup, registerSetupIpc, selectedDisplay, setupDone } from './setup'
@@ -24,18 +24,17 @@ try {
   /* no .env */
 }
 
-const SUGGEST_MODEL = process.env.GEMINI_SUGGEST_MODEL || 'gemini-4-hydrogen' // fast: guesses the question
-const EXPLAIN_MODEL = process.env.GEMINI_MODEL || 'gemini-4-neon' // smart: answers it
+const SUGGEST_MODEL = process.env.GEMINI_SUGGEST_MODEL || DEFAULT_GEMINI_MODEL
+const EXPLAIN_MODEL = process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL
 const MOCK = process.argv.includes('--mock') || process.env.MOCK === '1' || !process.env.GEMINI_API_KEY
 const DOODLES = process.argv.includes('--doodles') || process.env.DOODLES === '1'
 const PICK_KEYS = ['Alt+1', 'Alt+2', 'Alt+3']
 
 let win: BrowserWindow
 let display: Display
-// Separate counters, so a new confusion event restarts the question guess without
-// cutting off an answer that is still streaming.
-let suggestRun = 0
-let runId = 0
+// A nudge can be replaced without interrupting an open answer.
+let suggestionRequest: AbortController | undefined
+let answerRequest: AbortController | undefined
 
 function createOverlay(): void {
   display = selectedDisplay()
@@ -95,21 +94,25 @@ async function captureScreen(): Promise<string> {
   return png.toString('base64')
 }
 
-function currentGaze(): Gaze {
-  // Tracked eyes when live vision is running and calibrated; mouse pointer otherwise.
+type Focus = { gaze: Gaze; gazeSource: GazeSource }
+const NO_FOCUS: Focus = { gaze: { x: 500, y: 500 }, gazeSource: 'unavailable' }
+
+function currentFocus(): Focus {
   const live = liveGaze()
-  if (live) return live
+  if (live) return { gaze: live, gazeSource: 'tracked' }
   const p = screen.getCursorScreenPoint()
   const b = display.bounds
-  return {
+  const gaze = {
     x: Math.round(((p.x - b.x) / b.width) * 1000),
     y: Math.round(((p.y - b.y) / b.height) * 1000)
   }
+  if (gaze.x < 0 || gaze.x > 1000 || gaze.y < 0 || gaze.y > 1000) return NO_FOCUS
+  return { gaze, gazeSource: 'pointer' }
 }
 
-// State captured at the moment the user got stuck. Kept until they pick a question,
-// since the pointer moves to the mascot to click it and the screen may change.
-let pending: { gaze: Gaze; png: Promise<string> | null; questions: string[] } | null = null
+// A picked suggestion uses the screen and focus from the nudge.
+type PendingNudge = { focus: Focus; png: Promise<string> | null; questions: string[] }
+let pending: PendingNudge | null = null
 
 function setPickKeys(on: boolean): void {
   for (const k of PICK_KEYS) globalShortcut.unregister(k)
@@ -124,94 +127,109 @@ function setPickKeys(on: boolean): void {
 
 let paused = false
 
-/** Confusion detected: show the mascot and start guessing the question. Never explains on its own. */
+/** Confusion detected: offer help without opening an answer. */
 async function nudge(at?: Gaze | null): Promise<void> {
   if (paused) return
-  const myRun = ++suggestRun
-  const gaze = at ?? currentGaze()
+  suggestionRequest?.abort()
+  const request = new AbortController()
+  suggestionRequest = request
+  const focus: Focus = at === undefined ? currentFocus() : at ? { gaze: at, gazeSource: 'tracked' } : NO_FOCUS
   const png = MOCK ? null : captureScreen()
-  pending = { gaze, png, questions: [] }
-  win.webContents.send('nudge', gaze)
+  const nudgeState: PendingNudge = { focus, png, questions: [] }
+  pending = nudgeState
+  win.webContents.send('nudge', focus.gaze)
   setPickKeys(true)
 
   try {
-    const sug: Suggestions = MOCK
-      ? await new Promise<Suggestions>((r) => setTimeout(() => r(MOCK_SUGGESTIONS), 900))
-      : await suggest({ apiKey: process.env.GEMINI_API_KEY!, model: SUGGEST_MODEL, pngBase64: await png!, gaze })
-    if (myRun !== suggestRun || !pending) return
-    pending.questions = sug.questions
-    win.webContents.send('suggest', sug)
-  } catch (e) {
-    console.error('suggest failed:', e)
-    const blocked = screenBlocked(e)
-    // UI falls back to a generic bubble + "Explain what I'm looking at"
-    if (myRun === suggestRun) {
-      win.webContents.send('suggest', { stuck_on: '', questions: blocked ? ['Allow Screen Recording first'] : [] })
+    let suggestions: Suggestions
+    if (png) {
+      const pngBase64 = await png
+      request.signal.throwIfAborted()
+      suggestions = await suggest({
+        apiKey: process.env.GEMINI_API_KEY!,
+        model: SUGGEST_MODEL,
+        pngBase64,
+        ...focus,
+        signal: request.signal
+      })
+    } else {
+      suggestions = await new Promise<Suggestions>((resolve) => setTimeout(() => resolve(MOCK_SUGGESTIONS), 900))
     }
+    if (request.signal.aborted || pending !== nudgeState) return
+    pending.questions = suggestions.questions
+    win.webContents.send('suggest', suggestions)
+  } catch (e) {
+    if (request.signal.aborted || pending !== nudgeState) return
+    console.error('suggest failed:', (e as Error).name)
+    const blocked = screenBlocked(e)
+    // UI retains its existing generic hint affordance.
+    win.webContents.send('suggest', { stuck_on: '', questions: blocked ? ['Allow Screen Recording first'] : [] })
+  } finally {
+    if (suggestionRequest === request) suggestionRequest = undefined
   }
 }
 
-// The open conversation. Follow-ups are answered with its earlier turns and first screenshot.
-let convo: { gaze: Gaze; firstPng: Promise<string> | null; turns: Turn[] } | null = null
+let convo: { firstPngBase64?: string; turns: Turn[] } | null = null
 
-/**
- * Stream an answer. With no conversation open this starts one; otherwise it is a follow-up.
- * A picked suggestion uses the screenshot from the moment of confusion. A typed follow-up
- * takes a new screenshot, because the screen may have changed since.
- */
-async function explain(question: string | undefined, typed = false): Promise<void> {
-  const myRun = ++runId
-  suggestRun++
-  const isCurrent = (): boolean => myRun === runId
+/** Picked suggestions use the nudge screen. Typed turns use a fresh screen and the typed intent. */
+async function explain(input: string | undefined, typed = false): Promise<void> {
+  answerRequest?.abort()
+  suggestionRequest?.abort()
+  const request = new AbortController()
+  answerRequest = request
+  const isCurrent = (): boolean => !request.signal.aborted
   setPickKeys(false)
 
+  const question = typeof input === 'string' ? input.trim().slice(0, 2000) || undefined : undefined
+  const focus = (!typed && pending?.focus) || currentFocus()
+  const png = MOCK ? null : ((!typed && pending?.png) || captureScreen())
   const fresh = !convo
-  const png = MOCK ? null : ((typed && !fresh ? null : pending?.png) ?? captureScreen())
-  if (!convo) convo = { gaze: pending?.gaze ?? currentGaze(), firstPng: png, turns: [] }
+  const conversation = (convo ??= { turns: [] })
   pending = null
-  const { gaze, firstPng } = convo
-  const history = [...convo.turns]
   const turn: Turn = { question, title: '', says: [] }
-  convo.turns.push(turn)
   const onCmd = (cmd: Cmd): void => {
     if (!isCurrent()) return
     if ('title' in cmd) turn.title = cmd.title
     else if ('say' in cmd) turn.says.push(cmd.say)
     win.webContents.send('cmd', cmd)
   }
-  win.webContents.send('reset', { gaze, model: MOCK ? 'mock' : EXPLAIN_MODEL, question, fresh })
+  win.webContents.send('reset', { gaze: focus.gaze, model: MOCK ? 'mock' : EXPLAIN_MODEL, question, fresh })
 
   try {
-    if (MOCK) {
-      await streamMock({ gaze, question, followUp: !fresh, doodles: DOODLES, isCurrent, onCmd })
-    } else {
-      const pngBase64 = await png!
-      const firstPngBase64 = await firstPng!
+    if (png) {
+      const pngBase64 = await png
       if (!isCurrent()) return
+      const firstPngBase64 = (conversation.firstPngBase64 ??= pngBase64)
       await streamGemini({
         apiKey: process.env.GEMINI_API_KEY!,
         model: EXPLAIN_MODEL,
         pngBase64,
-        gaze,
+        ...focus,
         question,
-        history: { firstPngBase64, turns: history },
+        source: typed ? 'typed' : 'suggestion',
+        history: { firstPngBase64, turns: conversation.turns },
         doodles: DOODLES,
+        signal: request.signal,
         isCurrent,
         onCmd
       })
+    } else {
+      await streamMock({ gaze: focus.gaze, question, followUp: !fresh, doodles: DOODLES, isCurrent, onCmd })
     }
-    if (isCurrent()) win.webContents.send('done')
+    if (!isCurrent()) return
+    if (turn.says.length) conversation.turns = [...conversation.turns, turn].slice(-MAX_HISTORY_TURNS)
+    win.webContents.send('done')
   } catch (e) {
-    console.error(e)
-    if (isCurrent()) win.webContents.send('error', screenBlocked(e) ?? String((e as Error).message ?? e))
+    if (!isCurrent()) return
+    console.error('explanation failed:', (e as Error).name)
+    win.webContents.send('error', screenBlocked(e) ?? 'Gemini couldn’t finish this answer. Try asking again.')
+  } finally {
+    if (answerRequest === request) answerRequest = undefined
   }
 }
 
-/** Open the chat box without a confusion event (tray or hotkey). */
 function openChat(): void {
-  if (paused) return
-  if (!convo && !pending) pending = { gaze: currentGaze(), png: MOCK ? null : captureScreen(), questions: [] }
-  win.webContents.send('chat')
+  if (!paused) win.webContents.send('chat')
 }
 
 /** The overlay never takes focus, except while the user types in the chat box. */
@@ -226,8 +244,8 @@ function setFocus(on: boolean): void {
 }
 
 function dismiss(): void {
-  runId++
-  suggestRun++
+  answerRequest?.abort()
+  suggestionRequest?.abort()
   pending = null
   convo = null
   setPickKeys(false)
@@ -240,7 +258,8 @@ ipcMain.on('accept', (_e, question?: string) => void explain(question))
 ipcMain.on('ask', (_e, text: string) => void explain(text, true))
 ipcMain.on('focus', (_e, on: boolean) => setFocus(on))
 ipcMain.on('nudge-hidden', () => {
-  // Ignored (timed out): forget it. Doesn't touch an answer that's already open.
+  // The nudge timed out. An open answer can continue.
+  suggestionRequest?.abort()
   pending = null
   setPickKeys(false)
 })

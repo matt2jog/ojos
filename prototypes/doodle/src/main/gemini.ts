@@ -1,6 +1,8 @@
 import { GoogleGenAI, ThinkingLevel, type GenerateContentConfig } from '@google/genai'
 import type { Box, Cmd, Color, DrawCmd, Gaze, Point, Suggestions, Turn } from '../shared/commands'
 
+export const DEFAULT_GEMINI_MODEL = 'gemini-4-hydrogen'
+
 export type GazeSource = 'tracked' | 'pointer' | 'unavailable'
 
 type Screen = { pngBase64: string; gaze: Gaze; gazeSource?: GazeSource }
@@ -41,7 +43,7 @@ function requestConfig({ model, signal }: Model, timeoutMs: number): GenerateCon
   return {
     abortSignal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     httpOptions: { retryOptions: { attempts: 1 } },
-    ...(model === 'gemini-4-hydrogen' || model === 'gemini-4-neon'
+    ...(model === DEFAULT_GEMINI_MODEL || model === 'gemini-4-neon'
       ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
       : {})
   }
