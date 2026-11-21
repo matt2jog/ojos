@@ -106,7 +106,7 @@ export function openSetup(opts: { onDone(completed: boolean): void; startAt?: st
     height: 620,
     minWidth: 720,
     minHeight: 560,
-    show: false,
+    show: isSettings,
     title: isSettings ? 'Ojos Settings' : 'Ojos setup',
     backgroundColor: '#0e0f12',
     titleBarStyle: mac ? 'hiddenInset' : 'default',

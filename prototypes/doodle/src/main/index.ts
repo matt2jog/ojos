@@ -106,8 +106,9 @@ async function nudge(interval?: Interval): Promise<void> {
     }
   }
   nudgeRequest?.abort()
-  nudgeRequest = new AbortController()
-  const signal = AbortSignal.any([nudgeRequest.signal, AbortSignal.timeout(120_000)])
+  const request = new AbortController()
+  nudgeRequest = request
+  const signal = AbortSignal.any([request.signal, AbortSignal.timeout(120_000)])
   const myRun = ++runId
   pending = null
   setPickKeys(false)
@@ -134,7 +135,7 @@ async function nudge(interval?: Interval): Promise<void> {
     pending.summary = result.summary
     win.webContents.send('suggest', { stuck_on: result.suspected_confusion ?? '', questions: result.possible_questions, summary: result.summary })
   } catch (e) {
-    if (signal.aborted || myRun !== runId) return
+    if (request.signal.aborted || myRun !== runId) return
     console.error('suggest failed:', e)
     if (pending) win.webContents.send('suggest', { stuck_on: '', questions: [] })
   } finally {
@@ -377,25 +378,20 @@ function openSettings(): void {
     return
   }
   const overlay = win
+  clearNudge()
+  chatPane = null
+  overlay.webContents.send('suggestions-dismissed')
+  overlay.setIgnoreMouseEvents(true, { forward: true })
+  overlay.setAlwaysOnTop(false)
   const settings = openSetup({
     startAt: 'settings',
     onDone: () => {
-      if (!hidden && !win.isDestroyed()) win.showInactive()
+      if (!overlay.isDestroyed()) overlay.setAlwaysOnTop(true, 'screen-saver')
       const next = setupAfterSettings
       setupAfterSettings = null
       if (next) runSetup(next)
     }
   })
-  settings.once('show', () => {
-    if (overlay.isDestroyed()) return
-    clearNudge()
-    chatPane = null
-    overlay.webContents.send('suggestions-dismissed')
-    overlay.setFocusable(false)
-    overlay.setIgnoreMouseEvents(true, { forward: true })
-    overlay.hide()
-  })
-  // The hidden settings renderer can miss its first paint. Show the native window directly.
   settings.show()
   settings.focus()
 }
