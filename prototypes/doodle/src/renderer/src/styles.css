@@ -811,47 +811,335 @@ body {
   cursor: default;
 }
 
-/* Generated visual under an answer */
-.gen-widget {
+/* ---------- A2UI: generated interfaces under an answer ---------- */
+.a2ui {
   margin: 10px 0 4px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 14px;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.04);
 }
-.gen-widget-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 7px 11px;
-  font-size: 11px;
-  letter-spacing: 0.03em;
-  color: #9aa0a6;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-.gen-widget-head span:first-child {
-  color: #8ab4f8;
-  font-weight: 500;
-}
-.gen-widget iframe {
-  display: block;
-  width: 100%;
-  height: 290px;
-  border: 0;
-  background: transparent;
-  color-scheme: dark;
-}
-.gen-widget-loading {
-  padding: 16px 12px;
-  font-size: 13px;
-  color: #9aa0a6;
-}
-
-.gen-decision {
-  margin: 8px 0 2px;
+.a2ui-decision {
   font-size: 11px;
   letter-spacing: 0.03em;
   color: #80868b;
+  margin-bottom: 8px;
+}
+.a2ui-wait {
+  padding: 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  color: #9aa0a6;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+}
+.a2ui-wait.err {
+  color: #fbbc05;
+}
+.a2-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.a2-card {
+  padding: 12px 13px 13px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: #e8eaed;
+  animation: a2-in 0.3s ease both;
+}
+@keyframes a2-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.a2-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+.a2-card h4 {
+  margin: 0 0 6px;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: #fff;
+}
+.a2-card p {
+  margin: 0 0 8px;
+}
+.a2-card .a2-card {
+  margin-top: 10px;
+  background: rgba(0, 0, 0, 0.18);
+}
+.a2-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #ea4335;
+  background: rgba(234, 67, 53, 0.16);
+}
+.a2-bug.warning .a2-badge,
+.a2-badge.yellow {
+  color: #fbbc05;
+  background: rgba(251, 188, 5, 0.15);
+}
+.a2-bug.info .a2-badge,
+.a2-badge.blue {
+  color: #8ab4f8;
+  background: rgba(66, 133, 244, 0.18);
+}
+.a2-badge.green {
+  color: #81c995;
+  background: rgba(52, 168, 83, 0.18);
+}
+.a2-bug {
+  border-left: 3px solid #ea4335;
+}
+.a2-bug.warning {
+  border-left-color: #fbbc05;
+}
+.a2-bug.info {
+  border-left-color: #4285f4;
+}
+.a2-loc {
+  font: 11.5px ui-monospace, 'SF Mono', Menlo, monospace;
+  color: #9aa0a6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.a2-sub {
+  margin: 10px 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #9aa0a6;
+}
+.a2-code {
+  position: relative;
+  margin: 6px 0 8px;
+}
+.a2-code pre {
+  margin: 0;
+  padding: 9px 11px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow-x: auto;
+}
+.a2-code code {
+  font: 12px/1.5 ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  white-space: pre;
+  color: #e8eaed;
+}
+.a2-code button {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  padding: 2px 7px;
+  border: 0;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 10.5px;
+  color: #c4c7c5;
+  background: rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.a2-code:hover button {
+  opacity: 1;
+}
+.a2-btn {
+  padding: 7px 13px;
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #fff;
+  background: #1a73e8;
+  cursor: pointer;
+}
+.a2-btn:hover:not(:disabled) {
+  filter: brightness(1.12);
+}
+.a2-btn.ghost {
+  color: #8ab4f8;
+  background: rgba(66, 133, 244, 0.14);
+}
+.a2-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.a2-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+}
+.a2-fix {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  margin-bottom: 6px;
+  overflow: hidden;
+}
+.a2-fix.chosen {
+  border-color: rgba(52, 168, 83, 0.6);
+}
+.a2-fix-head {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 11px;
+  border: 0;
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  color: #e8eaed;
+  background: rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+}
+.a2-chev {
+  color: #9aa0a6;
+}
+.a2-fix-body {
+  padding: 8px 11px 10px;
+}
+.a2-progress {
+  display: flex;
+  gap: 4px;
+  margin: 2px 0 10px;
+}
+.a2-progress button {
+  flex: 1;
+  height: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.14);
+  cursor: pointer;
+}
+.a2-progress button.on {
+  background: #4285f4;
+}
+.a2-step {
+  animation: a2-in 0.22s ease both;
+}
+.a2-step-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  margin-bottom: 5px;
+  color: #fff;
+}
+.a2-num {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  font-size: 11.5px;
+  color: #fff;
+  background: #4285f4;
+}
+.a2-check ul {
+  list-style: none;
+  margin: 4px 0 10px;
+  padding: 0;
+}
+.a2-check li {
+  padding: 5px 0;
+}
+.a2-check label {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  cursor: pointer;
+}
+.a2-check input {
+  margin-top: 3px;
+  accent-color: #34a853;
+}
+.a2-item {
+  display: block;
+}
+.a2-detail {
+  display: block;
+  font-size: 12px;
+  color: #9aa0a6;
+}
+.a2-check li.done .a2-item {
+  text-decoration: line-through;
+  color: #9aa0a6;
+}
+.a2-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.a2-option {
+  padding: 9px 11px;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.a2-option.rec {
+  border-color: rgba(66, 133, 244, 0.55);
+  background: rgba(66, 133, 244, 0.07);
+}
+.a2-option.picked {
+  border-color: rgba(52, 168, 83, 0.7);
+}
+.a2-option-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 4px;
+}
+.a2-rec {
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: #8ab4f8;
+  background: rgba(66, 133, 244, 0.18);
+}
+.a2-option ul {
+  margin: 4px 0 6px;
+  padding-left: 18px;
+  font-size: 12.5px;
+}
+.a2-option ul.pros li::marker {
+  content: '+ ';
+  color: #81c995;
+}
+.a2-option ul.cons li::marker {
+  content: '− ';
+  color: #f28b82;
+}
+.a2-note {
+  margin: 0;
+  padding: 8px 11px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  color: #c4c7c5;
+  background: rgba(66, 133, 244, 0.1);
+}
+.a2-note.success {
+  background: rgba(52, 168, 83, 0.12);
+}
+.a2-note.warning {
+  background: rgba(251, 188, 5, 0.12);
 }
 
 /* Rendered Markdown in answers */

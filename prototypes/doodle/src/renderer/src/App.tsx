@@ -249,12 +249,6 @@ export function App(): React.JSX.Element {
       <div className={`stage ${mode === 'chat' ? 'on' : ''} ${busy ? 'busy' : ''}`}>
         <div className="vignette" />
         <DoodleCanvas hooks={doodleHooks} engineRef={engineRef} />
-        {gaze && (
-          <div
-            className="gaze"
-            style={{ left: `${(gaze.x / 1000) * 100}vw`, top: `${(gaze.y / 1000) * 100}vh` }}
-          />
-        )}
       </div>
       <Companion
         mode={mode}

@@ -3,7 +3,7 @@ import { join } from 'path'
 import { randomUUID } from 'node:crypto'
 import { readFile, rm } from 'node:fs/promises'
 import { analyzeBundle } from '@assistant'
-import type { ChatHistory, Gaze } from '../shared/commands'
+import type { ChatHistory, Gaze, A2uiAction } from '../shared/commands'
 import type { Interval, ViewportRect, VisionExport } from '../shared/capture'
 import { calibrationDisplay, closeSettings, configuredDisplay, configuringSetup, openSetup, permission, registerSetupIpc, selectedDisplay, settingsContents, setupContents, setupDone, storeGet, storeSet, triggerHigh } from './setup'
 import { clampTriggerHigh, type AppSettings } from '../shared/setup'
@@ -171,7 +171,9 @@ async function ask(question: string | undefined, picked = false): Promise<void> 
     }, (event) => {
       if (!current()) return
       if (event.kind === 'doodle') win.webContents.send('cmd', event.command)
-      else if (event.kind === 'widget') win.webContents.send('widget', event.widget)
+      else if (event.kind === 'ui-decision') win.webContents.send('a2ui-decision', event.decision)
+      else if (event.kind === 'a2ui') win.webContents.send('a2ui', event.payload)
+      else if (event.kind === 'a2ui-error') win.webContents.send('a2ui-error', event.message)
       else win.webContents.send(event.kind === 'status' ? 'chat-status' : 'chat-delta', event.text)
     })
     if (current()) {
@@ -269,6 +271,14 @@ const fromOverlay = (event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent)
   Boolean(win && !win.isDestroyed() && event.senderFrame === win.webContents.mainFrame)
 ipcMain.on('dismiss', (event) => { if (fromOverlay(event)) dismiss() })
 ipcMain.on('accept', (event, question?: string) => { if (fromOverlay(event) && pending) void ask(question, true) })
+// A2UI client action: a control in a generated interface was used. It goes to the agent as the
+// next turn in the same chat, so the agent can respond and render an updated interface.
+ipcMain.on('a2ui-action', (_event, action: A2uiAction) => {
+  if (!action || typeof action.name !== 'string') return
+  const label = typeof action.context?.label === 'string' ? action.context.label : action.name.replace(/_/g, ' ')
+  const detail = JSON.stringify({ action: action.name, component: action.sourceComponentId, context: action.context ?? {} })
+  void ask(`[UI action] ${label} ${detail}`.slice(0, 4000))
+})
 ipcMain.on('ask', (event, message: string) => {
   if (fromOverlay(event) && typeof message === 'string' && message.trim()) void ask(message)
 })

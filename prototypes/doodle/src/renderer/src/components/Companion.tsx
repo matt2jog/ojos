@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Markdown } from './Markdown'
-import { GenWidget } from './GenWidget'
+import { A2uiPane } from '../a2ui/A2uiPane'
 import type { SavedChat } from '../../../shared/commands'
+
+/** A press on a generated interface travels as "[UI action] <label> {json}"; show only the label. */
+const shown = (q?: string): string | undefined => q?.replace(/^\[UI action\]\s*/, '').replace(/\s*\{[\s\S]*\}\s*$/, '') || q
 
 export interface TurnView {
   /** What the user picked or typed. Empty for a generic "explain this". */
@@ -377,13 +380,13 @@ export function Companion(props: Props): React.JSX.Element {
                 {thread.length === 0 && <p className="talk-empty">Ask Ojos a question to start a chat.</p>}
                 {thread.map((t, i) => (
                   <div className="talk-turn" key={i}>
-                    <div className="talk-q">{t.question ?? (t.title || 'Explain what I’m looking at')}</div>
+                    <div className="talk-q">{shown(t.question) ?? (t.title || 'Explain what I’m looking at')}</div>
                     {t.says.map((s, j) => (
                       <Markdown key={j} text={s} />
                     ))}
                   </div>
                 ))}
-                <GenWidget />
+                <A2uiPane />
                 {status.kind === 'thinking' && (
                   <div className="talk-status" role="status">
                     <span className="dot" />

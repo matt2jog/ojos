@@ -59,7 +59,9 @@ export interface OjosApi {
   on(channel: 'nudge', fn: (gaze: Gaze) => void): () => void
   on(channel: 'suggest', fn: (s: Suggestions) => void): () => void
   on(channel: 'cmd', fn: (c: Cmd) => void): () => void
-  on(channel: 'widget', fn: (w: WidgetEvent) => void): () => void
+  on(channel: 'a2ui-decision', fn: (d: UiDecision) => void): () => void
+  on(channel: 'a2ui', fn: (p: A2uiPayload) => void): () => void
+  on(channel: 'a2ui-error', fn: (message: string) => void): () => void
   on(channel: 'chat-status' | 'chat-delta' | 'chat-answer', fn: (text: string) => void): () => void
   on(channel: 'chat-history', fn: (history: ChatHistory) => void): () => void
   on(channel: 'chat-meta', fn: (chat: SavedChat) => void): () => void
@@ -82,14 +84,31 @@ export interface OjosApi {
   newChat(): void
   olderChatTurns(before: number): Promise<ChatHistory>
   openSettings(): void
+  /** A button or control in a generated interface was used (an A2UI client action). */
+  a2uiAction(action: A2uiAction): void
 }
 
-/** Generative UI for the current answer, as chosen by the decision model. */
-export interface WidgetEvent {
-  state: 'text' | 'drawing' | 'ready' | 'error'
-  /** The decision model's choice: none, diagram, steps, comparison or interactive */
+/** What the decision skill and gemini-decision-1 concluded for this turn. */
+export interface UiDecision {
+  /** none, bug_insight, step_by_step, checklist, comparison, or followup (a button press) */
   kind: string
   confidence: number
+  /** Probability that an interface does work plain sentences cannot */
+  worth_it: number
   probabilities: Record<string, number>
-  html?: string
+  reason?: string
+}
+
+/** A2UI v0.9 server-to-client messages for one surface (createSurface, updateComponents, updateDataModel). */
+export interface A2uiPayload {
+  surfaceId: string
+  messages: unknown[]
+}
+
+/** A2UI client action: what the user did in a generated interface. */
+export interface A2uiAction {
+  name: string
+  surfaceId: string
+  sourceComponentId: string
+  context: Record<string, unknown>
 }

@@ -22,7 +22,8 @@ const api: OjosApi = {
   openSavedChat: (id) => ipcRenderer.send('open-chat', id),
   newChat: () => ipcRenderer.send('new-chat'),
   olderChatTurns: (before) => ipcRenderer.invoke('chat-older', before),
-  openSettings: () => ipcRenderer.send('open-settings')
+  openSettings: () => ipcRenderer.send('open-settings'),
+  a2uiAction: (action) => ipcRenderer.send('a2ui-action', action)
 }
 
 const setup: SetupApi = {

@@ -5,7 +5,7 @@ import { mkdir } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
-import type { ChatHistory, DrawCmd, SavedChat, WidgetEvent } from '../shared/commands'
+import type { A2uiPayload, ChatHistory, DrawCmd, SavedChat, UiDecision } from '../shared/commands'
 import { project, python } from './runtime'
 
 let child: ChildProcess | undefined
@@ -103,7 +103,9 @@ interface ChatRequest {
 }
 
 type ChatEvent = { kind: 'status'; text: string } | { kind: 'delta'; text: string } | { kind: 'doodle'; command: DrawCmd }
-  | { kind: 'widget'; widget: WidgetEvent }
+  | { kind: 'ui-decision'; decision: UiDecision }
+  | { kind: 'a2ui'; payload: A2uiPayload }
+  | { kind: 'a2ui-error'; message: string }
 const TOOL_LABELS: Record<string, string> = {
   list_files: 'Finding local files',
   read_file: 'Reading a local file',
@@ -115,7 +117,7 @@ const TOOL_LABELS: Record<string, string> = {
   remember: 'Saving a note',
   recall: 'Looking up a note',
   run_subagent: 'Asking a Gemini helper',
-  render_visual: 'Drawing a visual'
+  render_ui: 'Building an interface'
 }
 
 export async function streamChatTurn(opts: ChatRequest, onEvent: (event: ChatEvent) => void): Promise<{ text: string; chat: SavedChat }> {
@@ -133,7 +135,7 @@ export async function streamChatTurn(opts: ChatRequest, onEvent: (event: ChatEve
   }
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
   let buffer = ''
-  let ui: Pick<WidgetEvent, 'kind' | 'confidence' | 'probabilities'> | undefined
+  let ui: UiDecision | undefined
   let drawn = false
   try {
     while (true) {
@@ -151,20 +153,21 @@ export async function streamChatTurn(opts: ChatRequest, onEvent: (event: ChatEve
         const data = JSON.parse(raw)
         if (name === 'turn.error') throw new Error(data.message)
         if (name === 'turn.done' && typeof data.text === 'string') {
-          // The decision asked for a visual but the agent never rendered one.
-          if (ui && ui.kind !== 'none' && !drawn) onEvent({ kind: 'widget', widget: { state: 'error', ...ui } })
+          // The decision allowed an interface but the agent answered in words only: say nothing more.
+          if (ui && ui.kind !== 'none' && !drawn) onEvent({ kind: 'ui-decision', decision: { ...ui, kind: 'none', reason: 'agent_chose_words' } })
           return data
         }
         if (name === 'turn.delta' && typeof data.text === 'string') onEvent({ kind: 'delta', text: data.text })
         if (name === 'turn.doodle' && data.draw) onEvent({ kind: 'doodle', command: data })
-        // Generative UI: the decision model's choice, then the visual the agent rendered for it.
+        // Generative UI (A2UI): the decision for this turn, then the agent's A2UI messages.
         if (name === 'turn.ui' && typeof data.kind === 'string') {
-          ui = { kind: data.kind, confidence: data.confidence ?? 0, probabilities: data.probabilities ?? {} }
-          onEvent({ kind: 'widget', widget: { state: ui.kind === 'none' ? 'text' : 'drawing', ...ui } })
+          ui = { kind: data.kind, confidence: data.confidence ?? 0, worth_it: data.worth_it ?? 0,
+            probabilities: data.probabilities ?? {}, reason: data.reason || undefined }
+          onEvent({ kind: 'ui-decision', decision: ui })
         }
-        if (name === 'turn.widget' && typeof data.html === 'string') {
-          onEvent({ kind: 'widget', widget: { state: 'ready', ...(ui ?? { kind: data.kind, confidence: 0, probabilities: {} }), html: data.html } })
+        if (name === 'turn.a2ui' && Array.isArray(data.messages)) {
           drawn = true
+          onEvent({ kind: 'a2ui', payload: { surfaceId: String(data.surfaceId ?? ''), messages: data.messages } })
         }
         if (name === 'turn.status') {
           const text = typeof data.text === 'string' ? data.text : TOOL_LABELS[data.tools?.[0]] ?? 'Using a tool'
