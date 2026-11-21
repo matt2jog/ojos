@@ -1,0 +1,29 @@
+{
+  "name": "doodle",
+  "version": "1.0.0",
+  "description": "Ojos live-doodle overlay prototype",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "mock": "electron-vite dev -- --mock",
+    "build": "electron-vite build",
+    "typecheck": "tsc"
+  },
+  "keywords": [],
+  "type": "commonjs",
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "electron": "^45.4.1",
+    "electron-vite": "^6.0.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8"
+  },
+  "dependencies": {
+    "@google/genai": "^3.6.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  }
+}
