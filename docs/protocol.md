@@ -88,7 +88,7 @@ This is the legacy single-tracker gaze sidecar. It uses a sorted 200,000 µs gri
 
 ### Gaze and confusion sidecar v2
 
-`exportVisionSeries` in [`models/vision/index.mjs`](../models/vision/index.mjs) returns `{gaze_status, gaze}`. Place `gaze_status` in the manifest and send `gaze` as the multipart JSON part. The backend passes the same sidecar to Gemini with the clean screen and playback video. The backend can use the individual estimates, fused point and selected region alongside the confusion score. Evidence for an answer comes from the screen and playback audio.
+`exportVisionSeries` in [`models/vision/index.mjs`](../models/vision/index.mjs) returns `{gaze_status, gaze}`. Place `gaze_status` in the manifest and send `gaze` as the multipart JSON part. The [local MVP backend](../agentic_system/assistant/MVP_HANDOFF.md) reads the fused point and box and passes bounded gaze hints with the screen video and a still. Its Gemini request excludes playback audio, individual tracker predictions and confusion scores. The full sidecar makes those numeric fields available for future experiments.
 
 ```json
 {
@@ -131,6 +131,7 @@ For a standalone fixture, run `node models/vision/replay.mjs models/vision/fixtu
 - On acceptance, return HTTP `202` and `{"job_id":"2e20ca6d-dd33-4bf6-8539-b4cb54c64df2"}`. Deduplicate on stable install identity, session ID, and event ID before admitting new work. Reuse the same job ID after a successful submission whose response was lost. A deliberate new request uses a new event ID.
 - Open `GET /v1/jobs/{job_id}/events` with the same bearer token. Send named SSE events with increasing integer sequence numbers starting at 1 per job. Replay missed events using `Last-Event-ID`, then stream new events. The client deduplicates by sequence number within the job and checks its current pane before applying an update.
 - Initial events are `job.status` with phase `accepted`, `uploading_to_gemini`, or `analyzing`, then `job.result` or `job.error`. Send a complete validated initial result in one event so the pane can match evidence to the answer.
+- The local MVP also emits `job.analysis` immediately before `job.result`. It carries `schema_version`, `status` (`analyzed` or `insufficient_evidence`), `suspected_confusion`, `possible_questions`, `summary`, and `evidence`. Subscribe to `job.analysis` for the overlay’s questions and summary.
 
 ```text
 id: 4

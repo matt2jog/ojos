@@ -1,5 +1,7 @@
 # Desktop capture, sidebar, and Gemini
 
+This is the longer-term integration proposal. The [MVP handoff](../agentic_system/assistant/MVP_HANDOFF.md) documents the current Hydrogen backend, local runner, and overlay wiring.
+
 The desktop developer owns display selection, capture and packaging on Windows and macOS, the sidebar, and the Vast service. Start integration with recorded fixtures. The vision developer can plug in live events and gaze using the same interface. [Shared protocol](protocol.md) · [Vision handoff](vision.md)
 
 ## Desktop process layout

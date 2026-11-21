@@ -2,9 +2,11 @@
 
 The MVP takes a complete screen MP4 and timestamped tracking JSON. It returns `suspected_confusion`, `possible_questions`, and a `summary` for the desktop to display. The structured result also includes a status and clip-relative evidence. A weak clip returns `insufficient_evidence`.
 
+For a team smoke test and the specific changes needed on `proto/doodle`, start with the [MVP handoff](MVP_HANDOFF.md) and its [runnable desktop client](desktop-client.mjs).
+
 ## Run it on Matt’s files
 
-From the repository root, use Python 3.10+ and FFmpeg/FFprobe on `PATH`. The live commands use `GEMINI_API_KEY` from the environment or the Git-ignored `agentic_system/assistant/.env` file. The default is Gemini 3.5 Flash-Lite.
+From the repository root, use Python 3.10+ and FFmpeg/FFprobe on `PATH`. The live commands use `GEMINI_API_KEY` from the environment or the Git-ignored `agentic_system/assistant/.env` file. The default is Gemini 4 Hydrogen (`gemini-4-hydrogen`).
 
 ```sh
 python3 -m agentic_system.assistant analyze \
@@ -31,7 +33,7 @@ curl -fsS 'http://127.0.0.1:8766/v1/analyze' \
   -F "tracking=@$HOME/Downloads/interval-04-tracking.json;type=application/json"
 ```
 
-For desktop capture bundles, submit `manifest`, `gaze`, and `video` to [protocol v1](../../docs/protocol.md) `POST /v1/jobs` and open `GET /v1/jobs/{job_id}/events`. The local prototype emits `job.analysis` with all three fields immediately before `job.result`. The v1 `job.result` still puts the first possible question in `likely_question` and the summary in `answer`. The endpoint also supports SSE resume and cancellation. The prototype does not implement the v1 messages route.
+For desktop capture bundles, submit `manifest`, `gaze`, and `video` to [protocol v1](../../docs/protocol.md) `POST /v1/jobs` and open `GET /v1/jobs/{job_id}/events`. Use a v1 manifest with either legacy gaze v1 or Matt’s fused gaze v2. The local prototype emits `job.analysis` with all three fields immediately before `job.result`. The v1 `job.result` still puts the first possible question in `likely_question` and the summary in `answer`. The endpoint also supports SSE resume and cancellation. The messages route is future work.
 
 ## Verify and compare
 
@@ -73,6 +75,7 @@ The screen shows one answer box with `mira omar` and `ren priya` on separate lin
 python3 -m agentic_system.assistant.intent_eval \
   --video "$HOME/Downloads/interval-04-screen.mp4" \
   --tracking "$HOME/Downloads/interval-04-tracking.json" \
+  --model gemini-3.5-flash-lite \
   --repeats 1
 ```
 
@@ -81,5 +84,13 @@ python3 -m agentic_system.assistant.intent_eval \
 For manual review, compare each result against the recording. Mark whether it names the desk-ordering task, asks a question about deriving Mira’s seat from Omar’s, and accurately describes the visible clues and draft. The original review was done with the conditions visible. For example, `recorded_gaze`, trial 1, correctly included the Mira question and described multiple answer boxes in its evidence. Score the question and the evidence separately. The participant’s own account would be needed to score whether the inferred sticking point matched their intent.
 
 Local files under `.eval/` include the preserved original nine backend results and a crop of the shared still for review. Git ignores those files.
+
+### Frame verification experiment
+
+In AI Studio, a synthetic test asked Gemini to check a claim about two answer boxes. Gemini called `inspect_frame` with `time_ms: 3966`. A manually entered mock response reported one answer box and two lines. Gemini used that response to reject the claim. This exercised the function request and response in the temporary chat.
+
+A separate live API probe sent six claims and the actual frame at 3.966102 seconds to Gemini 3.5 Flash-Lite. I compared the full frame and a crop of the puzzle. Both scored **5/6** against labels based on the visible screen. Both accepted the one-box description, rejected the two-box claim and the claim that Mira and Omar appeared on different lines, and left the learner’s belief about adjacency uncertain. Both mistakenly treated an active Submit button as evidence that it had never been clicked. The two extra calls took **1.65 s** and **1.98 s**, respectively. The raw verdicts are recorded in the local `.eval/frame-check.xq7h4O/results.json` file.
+
+The prototype still uses one analysis call. An evidence check can be scoped to visual claims that change the hint. It needs a frame at the cited timestamp and distinct outcomes for supported, contradicted, and unclear claims. Prior user actions need a clip or event log that covers them, and confirming intent requires the user’s own account.
 
 The `ask`, `compare`, and `eval` commands cover the earlier question-only and task-memory experiment. They do not change the baseline endpoint. See the [follow-up proposal](../../docs/assistant-mvp.proposed.md) for that work.
