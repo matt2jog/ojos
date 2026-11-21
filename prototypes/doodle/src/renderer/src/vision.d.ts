@@ -76,6 +76,7 @@ declare module '@vision/index.mjs' {
       onError(error: Error, lane: string): void
     })
     submit(frame: VideoFrame, timeUs: number, frameId: number): void
+    updateProfiles(profiles: Record<string, unknown>): void
     exportClip(startUs: number, endUs: number): VisionExport
   }
 }

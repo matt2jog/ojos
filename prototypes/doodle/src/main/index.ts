@@ -51,6 +51,11 @@ function createOverlay(): void {
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   win.setIgnoreMouseEvents(true, { forward: true })
   win.setContentProtection(true) // keep the overlay out of screen captures
+  win.on('close', (event) => {
+    if (quitting) return
+    event.preventDefault()
+    dismiss()
+  })
 
   if (process.env.ELECTRON_RENDERER_URL) win.loadURL(process.env.ELECTRON_RENDERER_URL)
   else win.loadFile(join(__dirname, '../renderer/index.html'))
@@ -72,17 +77,18 @@ function setPickKeys(on: boolean): void {
   )
 }
 
-let paused = false
 let hidden = false
 let overlayFocusAt = 0
+let suspended = false
+let quitting = false
+let reconnectTimer: ReturnType<typeof setTimeout> | undefined
 
 function setHidden(value: boolean): void {
   if (hidden === value) return
   hidden = value
   if (hidden) {
-    dismiss()
     win.hide()
-  } else if (!settingsContents()) {
+  } else {
     win.showInactive()
   }
   refreshTray()
@@ -90,13 +96,13 @@ function setHidden(value: boolean): void {
 
 /** Confusion detected: show the mascot and start guessing the question. Never explains on its own. */
 async function nudge(interval?: Interval): Promise<void> {
-  if (paused || settingsContents() || chatRequest || chatListOpen || (interval && (hidden || pending)) || !capture?.isRecording()) return
+  if (setupContents() || chatRequest || chatListOpen || (interval && (hidden || pending)) || !capture?.isRecording()) return
   if (hidden) setHidden(false)
   if (interval && chatId && chatAnswered && chatPane) {
     const id = chatId
     const pane = chatPane
     const overlap = await capture.gazedAtPane(interval, pane, paneIoU)
-    if (paused || hidden || settingsContents() || chatRequest || chatListOpen || id !== chatId || pane !== chatPane) return
+    if (!capture?.isRecording() || hidden || setupContents() || chatRequest || chatListOpen || id !== chatId || pane !== chatPane) return
     if (overlap) {
       if (!chatHelpOffered) {
         chatHelpOffered = true
@@ -145,7 +151,7 @@ async function nudge(interval?: Interval): Promise<void> {
 
 /** Taking a fresh screen suggestion opens a chat. Typed follow-ups reuse its ID. */
 async function ask(question: string | undefined, picked = false): Promise<void> {
-  if (hidden || settingsContents() || chatRequest || chatListOpen || (picked && !pending) ||
+  if (hidden || setupContents() || chatRequest || chatListOpen || (picked && !pending) ||
       (question !== undefined && typeof question !== 'string')) return
   const message = question?.trim() || 'Explain what I’m looking at.'
   if (message.length > 8000) return
@@ -272,7 +278,7 @@ ipcMain.on('accept', (event, question?: string) => { if (fromOverlay(event) && p
 ipcMain.on('ask', (event, message: string) => {
   if (fromOverlay(event) && typeof message === 'string' && message.trim()) void ask(message)
 })
-ipcMain.on('nudge-hidden', (event) => { if (fromOverlay(event)) clearNudge() })
+ipcMain.on('decline-suggestion', (event) => { if (fromOverlay(event)) clearNudge() })
 ipcMain.on('chat-list-mode', (event, open: boolean) => {
   if (!fromOverlay(event)) return
   chatListOpen = open === true
@@ -327,12 +333,12 @@ const visibilityItem = (): MenuItemConstructorOptions => ({
 
 function refreshTray(): void {
   if (!tray) return
-  tray.setToolTip(hidden ? 'Ojos (hidden)' : paused ? 'Ojos (recording stopped)' : 'Ojos')
   const recording = capture?.isRecording()
+  tray.setToolTip(hidden ? 'Ojos (hidden)' : recording ? 'Ojos' : 'Ojos (waiting for capture)')
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: hidden ? (recording ? 'Hidden · Recording continues' : 'Hidden · Recording stopped') :
-        paused ? 'Recording stopped' : 'Ojos is watching for confusion', enabled: false },
+      { label: recording ? (hidden ? 'Hidden · Recording continues' : 'Ojos is watching for confusion') :
+        setupDone() ? 'Waiting for capture' : 'Complete setup to start recording', enabled: false },
       { type: 'separator' },
       { label: 'Help me with this now', accelerator: 'CommandOrControl+Shift+O', click: () => void nudge() },
       { label: 'Saved chats', click: showSavedChats },
@@ -341,13 +347,6 @@ function refreshTray(): void {
         if (id) void openSavedChat(id)
       } },
       visibilityItem(),
-      ...(paused && setupDone() && !configuringSetup() ? [{
-        label: 'Resume recording',
-        click: () => {
-          paused = false
-          void startRecording().finally(refreshTray)
-        }
-      }] : []),
       { label: 'Settings…', click: openSettings },
       { label: 'Recalibrate eyes…', click: () => runSetup('calibrate') },
       { label: 'Run setup again…', click: () => runSetup('welcome') },
@@ -378,9 +377,6 @@ function openSettings(): void {
     return
   }
   const overlay = win
-  clearNudge()
-  chatPane = null
-  overlay.webContents.send('suggestions-dismissed')
   overlay.setIgnoreMouseEvents(true, { forward: true })
   overlay.setAlwaysOnTop(false)
   const settings = openSetup({
@@ -396,7 +392,7 @@ function openSettings(): void {
   settings.focus()
 }
 
-/** Show the setup window; the overlay is (re)created on the chosen display when it closes. */
+/** Setup reuses the active camera and leaves the capture buffer running. */
 function runSetup(startAt: string): void {
   if (settingsContents() && (startAt === 'calibrate' || startAt === 'welcome')) {
     setupAfterSettings = startAt
@@ -410,26 +406,29 @@ function runSetup(startAt: string): void {
     window?.focus()
     return
   }
-  paused = true
-  dismiss()
-  capture?.stop()
+  const overlay = win
+  overlay.setAlwaysOnTop(false)
   openSetup({
     startAt,
+    recording: capture?.isRecording(),
     onDone: (completed) => {
-      capture?.stop()
+      capture?.endCalibration()
       capture?.cancelCalibrationWarmup()
-      paused = !completed
-      if (win && !win.isDestroyed() && String(selectedDisplay().id) !== String(display.id)) {
-        win.destroy()
-        createOverlay()
-        if (hidden) win.hide()
-        win.webContents.once('did-finish-load', () => win.webContents.send('ready', `${modeLabel()}|${modKey()}`))
+      if (!overlay.isDestroyed()) overlay.setAlwaysOnTop(true, 'screen-saver')
+      const target = completed ? configuredDisplay() : undefined
+      if (target) {
+        if (!overlay.isDestroyed() && display.id !== target.id) {
+          display = target
+          overlay.setBounds(display.bounds)
+        }
       }
-      if (completed) void startRecording()
+      if (target && capture?.isRecording() && !capture.usesDisplay(target.id)) capture.stop()
+      else void capture?.refreshCalibration().catch((error) => console.warn('Could not update gaze calibration:', error))
+      void startRecording()
       refreshTray()
     }
   })
-  capture?.prewarmCalibration()
+  if (!capture?.isRecording()) capture?.prewarmCalibration()
   refreshTray()
 }
 
@@ -472,23 +471,32 @@ ipcMain.handle('settings:setup', (event, view: string) => {
   runSetup(view)
 })
 
+function reconnectRecording(): void {
+  if (!capture || reconnectTimer || suspended || quitting || !setupDone() || configuringSetup()) return
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = undefined
+    void startRecording()
+  }, 3000)
+  reconnectTimer.unref()
+}
+
 async function startRecording(): Promise<void> {
+  if (!capture || suspended || quitting || !setupDone() || configuringSetup() || capture.isRecording()) return
+  clearTimeout(reconnectTimer)
+  reconnectTimer = undefined
   const target = configuredDisplay()
-  if (!setupDone() || configuringSetup() || !target) {
-    paused = true
-    refreshTray()
+  if (!target) {
+    reconnectRecording()
     return
   }
   try {
-    if (!capture) throw new Error('This platform does not have a recording adapter.')
-    if (!capture.isRecording()) await capture.start(target, 'record')
-    refreshTray()
+    await capture.start(target, 'record')
   } catch (error) {
     if (configuringSetup()) return
-    paused = true
-    refreshTray()
     console.warn('Recording did not start:', (error as Error).message)
+    reconnectRecording()
   }
+  refreshTray()
 }
 
 ipcMain.handle('setup:prepare-calibration', async (event) => {
@@ -496,15 +504,15 @@ ipcMain.handle('setup:prepare-calibration', async (event) => {
   if (!configuringSetup() || event.sender !== setupContents() || !target || !capture) {
     throw new Error('Live calibration is unavailable.')
   }
-  return capture.start(target, 'calibrate')
+  return capture.prepareCalibration(target)
 })
 ipcMain.handle('setup:calibration-clock', (event) => {
   if (event.sender !== setupContents() || !capture?.isCalibrating()) throw new Error('Calibration is unavailable.')
   return capture.clock()
 })
 ipcMain.on('setup:stop-calibration', (event) => {
-  if (event.sender === setupContents() && !capture?.isRecording()) {
-    capture?.stop()
+  if (event.sender === setupContents() && configuringSetup()) {
+    capture?.endCalibration()
     capture?.cancelCalibrationWarmup()
   }
 })
@@ -548,11 +556,8 @@ app.whenReady().then(() => {
       (interval) => void nudge(interval),
       (observation) => setupContents()?.send('setup:gaze', observation),
       (reason) => {
-        if (!configuringSetup()) {
-          paused = true
-          dismiss()
-          refreshTray()
-        }
+        refreshTray()
+        reconnectRecording()
         console.warn('Recording stopped:', reason)
       },
       (stage) => setupContents()?.send('setup:calibration-progress', stage)
@@ -563,19 +568,15 @@ app.whenReady().then(() => {
   if (!setupDone() || !configuredDisplay() || process.argv.includes('--setup')) runSetup('welcome')
   else void startRecording()
 
-  let resumeAfterSleep = false
   powerMonitor.on('suspend', () => {
-    resumeAfterSleep = !paused && !!capture?.isRecording()
-    dismiss()
+    suspended = true
+    clearTimeout(reconnectTimer)
+    reconnectTimer = undefined
     capture?.stop('Computer suspended.')
   })
   powerMonitor.on('resume', () => {
-    if (resumeAfterSleep && !configuringSetup()) {
-      paused = false
-      void startRecording()
-      refreshTray()
-    }
-    resumeAfterSleep = false
+    suspended = false
+    void startRecording()
   })
   screen.on('display-removed', (_event, removed) => {
     if (capture?.usesDisplay(removed.id)) capture.stop('Selected display was disconnected.')
@@ -616,6 +617,8 @@ app.whenReady().then(() => {
 })
 
 app.on('before-quit', () => {
+  quitting = true
+  clearTimeout(reconnectTimer)
   nudgeRequest?.abort()
   chatRequest?.abort()
   capture?.close()

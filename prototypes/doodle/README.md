@@ -1,6 +1,6 @@
 # Ojos desktop
 
-Ojos starts recording the configured display after setup and starts a fresh session on later launches. **Hide Ojos** keeps local buffering on and suppresses automatic suggestions. **Show Ojos** restores them. **Quit Ojos** stops capture, and **Resume recording** is available if capture stopped during setup or a device change.
+Ojos starts recording the configured display after setup. Dismissing an offer or chat clears the overlay while local buffering continues. **Hide Ojos** hides the overlay and preserves the current offer or chat. **Show Ojos** restores it. Recalibration uses the active camera feed, and **Quit Ojos** ends capture. After sleep or a display interruption, Ojos reconnects when the configured source is available.
 
 Open **Settings** from the button under the avatar or from the menu bar or tray. On macOS, clicking the Dock icon opens Settings, and its menu includes saved chats and visibility controls. On Windows, pin the installed Ojos shortcut to the taskbar to use its **Settings** and **Saved chats** actions. Launching Ojos again while it is running also opens Settings.
 

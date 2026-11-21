@@ -33,68 +33,30 @@ export function App(): React.JSX.Element {
   const [mac, setMac] = useState(true)
   const [focusSignal, setFocusSignal] = useState(0)
   const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const nudgeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const waitingForSuggestions = useRef(false)
-  const hovered = useRef(false)
   const modeRef = useRef<Mode>('hidden')
   modeRef.current = mode
-  const forkRef = useRef(false)
-  forkRef.current = forkOffer
   const libraryVersion = useRef(0)
   const transcriptVersion = useRef(0)
   const setOverUi = useCallback((over: boolean) => window.ojos.setOverPanel(over), [])
 
-  const clearNudgeTimer = useCallback(() => {
-    if (nudgeTimer.current) clearTimeout(nudgeTimer.current)
-  }, [])
-
   const keepChat = useCallback(() => {
-    clearNudgeTimer()
     waitingForSuggestions.current = false
     setForkOffer(false)
     setQuestions(null)
-    window.ojos.nudgeHidden()
-  }, [clearNudgeTimer])
-
-  // Ignored mascot goes away: they were probably just thinking. Paused while hovered,
-  // and never while a conversation is open.
-  const armNudgeTimeout = useCallback(
-    (ms: number) => {
-      clearNudgeTimer()
-      nudgeTimer.current = setTimeout(() => {
-        if (modeRef.current === 'chat' && forkRef.current) {
-          keepChat()
-          return
-        }
-        if (modeRef.current !== 'nudge') return
-        setMode('hidden')
-        window.ojos.nudgeHidden()
-      }, ms)
-    },
-    [clearNudgeTimer, keepChat]
-  )
-  const onHover = useCallback(
-    (over: boolean) => {
-      hovered.current = over
-      setOverUi(over)
-      if (over) clearNudgeTimer()
-      else if (!waitingForSuggestions.current && (modeRef.current === 'nudge' || forkRef.current)) armNudgeTimeout(6000)
-    },
-    [setOverUi, clearNudgeTimer, armNudgeTimeout]
-  )
+    window.ojos.declineSuggestion()
+  }, [])
 
   const openChat = useCallback(() => {
-    clearNudgeTimer()
     if (fadeTimer.current) clearTimeout(fadeTimer.current)
     ++libraryVersion.current
     setOpeningChat(null)
     window.ojos.setChatListOpen(false)
     setMode('chat')
     setFocusSignal((n) => n + 1)
-  }, [clearNudgeTimer])
+  }, [])
 
   const openLibrary = useCallback(() => {
-    clearNudgeTimer()
     waitingForSuggestions.current = false
     if (fadeTimer.current) clearTimeout(fadeTimer.current)
     setForkOffer(false)
@@ -111,7 +73,7 @@ export function App(): React.JSX.Element {
     }).catch(() => {
       if (libraryVersion.current === revision) setLibraryError('Could not load your saved chats.')
     })
-  }, [clearNudgeTimer])
+  }, [])
 
   const loadEarlier = async (): Promise<void> => {
     if (olderBefore === null || loadingOlder || !activeChat) return
@@ -131,7 +93,6 @@ export function App(): React.JSX.Element {
   }
 
   const dismissLocal = useCallback(() => {
-    clearNudgeTimer()
     waitingForSuggestions.current = false
     engineRef.current?.cancel()
     setMode('hidden')
@@ -153,7 +114,7 @@ export function App(): React.JSX.Element {
     fadeTimer.current = setTimeout(() => {
       engineRef.current?.reset()
     }, 400) // after the CSS fade
-  }, [clearNudgeTimer])
+  }, [])
 
   useEffect(() => {
     const offs = [
@@ -165,7 +126,6 @@ export function App(): React.JSX.Element {
       window.ojos.on('nudge', () => {
         // Might just be thinking: offer help, never force it.
         if (modeRef.current === 'library') return
-        clearNudgeTimer()
         waitingForSuggestions.current = true
         if (fadeTimer.current) clearTimeout(fadeTimer.current)
         setQuestions(null)
@@ -181,14 +141,6 @@ export function App(): React.JSX.Element {
         if (!waitingForSuggestions.current) return
         waitingForSuggestions.current = false
         setQuestions(sug.questions)
-        if (!hovered.current) armNudgeTimeout(modeRef.current === 'chat' ? 20_000 : 15_000)
-      }),
-      window.ojos.on('suggestions-dismissed', () => {
-        clearNudgeTimer()
-        waitingForSuggestions.current = false
-        setForkOffer(false)
-        setQuestions(null)
-        if (modeRef.current === 'nudge') setMode('hidden')
       }),
       window.ojos.on('chat', openChat),
       window.ojos.on('chat-list', openLibrary),
@@ -216,7 +168,6 @@ export function App(): React.JSX.Element {
         setGaze(null)
       }),
       window.ojos.on('reset', ({ gaze, question, fresh }) => {
-        clearNudgeTimer()
         waitingForSuggestions.current = false
         if (fadeTimer.current) clearTimeout(fadeTimer.current)
         engineRef.current?.reset()
@@ -256,7 +207,7 @@ export function App(): React.JSX.Element {
       window.ojos.on('dismiss', dismissLocal)
     ]
     return () => offs.forEach((off) => off())
-  }, [dismissLocal, clearNudgeTimer, armNudgeTimeout, openChat, openLibrary])
+  }, [dismissLocal, openChat, openLibrary])
 
   return (
     <>
@@ -304,7 +255,7 @@ export function App(): React.JSX.Element {
           setOfferSimpler(false)
           window.ojos.ask('Can you explain your last answer in a different way?')
         }}
-        onHover={onHover}
+        onHover={setOverUi}
       />
       {toast && <ReadyToast text={toast} />}
     </>

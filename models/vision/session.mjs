@@ -5,6 +5,8 @@ import {exportVisionSeries, GAZE_MAX_AGE_US, GAZE_MODELS} from "./series.mjs";
 // One instance per capture epoch. Its ring contains numerical outputs only.
 export class VisionSession {
   #config;
+  #geometry;
+  #projectors;
   #history = {model1: [], model2: [], confusion: []};
   #dispatcher;
 
@@ -14,8 +16,8 @@ export class VisionSession {
       throw new TypeError("Unknown vision worker");
     }
     this.#config = {sessionId, captureEpoch, width: geometry.viewportWidth, height: geometry.viewportHeight, confusionModel};
-    const projectors = Object.fromEntries(Object.keys(GAZE_MODELS).map(tracker => [tracker,
-      createGazeProjector({tracker, geometry, profile: profiles[tracker], sessionId, captureEpoch})]));
+    this.#geometry = geometry;
+    this.updateProfiles(profiles);
     this.#dispatcher = new VisionFrameDispatcher({workers, clockUs, onError, rates, onResult: reply => {
       const {worker, timeUs, result} = reply;
       if (worker === "confusion") {
@@ -28,10 +30,16 @@ export class VisionSession {
         this.#history.confusion.push(sample);
         if (interval) onInterval?.(interval, timeUs);
       } else {
-        this.#history[worker].push(projectors[worker](timeUs, result));
+        this.#history[worker].push(this.#projectors[worker](timeUs, result));
         onObservation?.(worker, timeUs, result);
       }
     }});
+  }
+
+  updateProfiles(profiles) {
+    const {sessionId, captureEpoch} = this.#config;
+    this.#projectors = Object.fromEntries(Object.keys(GAZE_MODELS).map(tracker => [tracker,
+      createGazeProjector({tracker, geometry: this.#geometry, profile: profiles[tracker], sessionId, captureEpoch})]));
   }
 
   submit(frame, timeUs, frameId) {

@@ -93,7 +93,7 @@ const SETTINGS_URL: Record<'camera' | 'screen', string> = mac
 let setupWin: BrowserWindow | null = null
 let settingsView = false
 
-export function openSetup(opts: { onDone(completed: boolean): void; startAt?: string }): BrowserWindow {
+export function openSetup(opts: { onDone(completed: boolean): void; startAt?: string; recording?: boolean }): BrowserWindow {
   if (setupWin && !setupWin.isDestroyed()) {
     setupWin.show()
     setupWin.focus()
@@ -129,9 +129,10 @@ export function openSetup(opts: { onDone(completed: boolean): void; startAt?: st
     opts.onDone(completed)
   })
   const step = opts.startAt ?? 'welcome'
+  const search = opts.recording ? '?recording=1' : ''
   const loading = process.env.ELECTRON_RENDERER_URL
-    ? window.loadURL(`${process.env.ELECTRON_RENDERER_URL}/setup.html#${step}`)
-    : window.loadFile(join(__dirname, '../renderer/setup.html'), { hash: step })
+    ? window.loadURL(`${process.env.ELECTRON_RENDERER_URL}/setup.html${search}#${step}`)
+    : window.loadFile(join(__dirname, '../renderer/setup.html'), { search, hash: step })
   void loading.catch((error) => {
     if (window.isDestroyed()) return
     console.warn('Could not load Ojos setup:', error)
