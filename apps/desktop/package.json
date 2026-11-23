@@ -1,7 +1,8 @@
 {
-  "name": "doodle",
+  "name": "ojos-desktop",
+  "productName": "Ojos",
   "version": "1.0.0",
-  "description": "Ojos live-doodle overlay prototype",
+  "description": "Ojos desktop app: the overlay, setup, capture, and generative interfaces",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",

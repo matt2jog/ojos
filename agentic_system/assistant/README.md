@@ -41,4 +41,4 @@ The `run_subagent` tool accepts a focused `task`, a `model` of `gemini-4-hydroge
 python -m unittest discover -s agentic_system/assistant -t . -v
 ```
 
-The tests use [generated screen media](../../spikes/screen-sync-lab/README.md) and run without a provider key.
+The tests use [generated screen media](../../testing/screen-sync-lab/README.md) and run without a provider key.

@@ -4,7 +4,7 @@ Run from the repository root with Python 3 and an FFmpeg build that includes
 `ffprobe`, `libx264`, and the AAC encoder.
 
 ```sh
-python3 spikes/screen-sync-lab/media/generate.py
+python3 testing/screen-sync-lab/media/generate.py
 ```
 
 The generator prints its temporary output directory. Use `--output-dir PATH`

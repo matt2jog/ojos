@@ -28,13 +28,13 @@ node recorder.cjs /path/to/ojos-clip/video.mp4 5.4 /path/to/frame.png
 | `renderer.js` | Reads Chromium video frames, scales proportionally to fit 1920 × 1080, and sends time-stamped JPEGs at up to about 15 fps. It aligns clocks using the lowest-round-trip ping and anchors the capture timeline on the first frame. The first-frame delay is a live sync measurement to check on each platform. |
 | `recorder.cjs` | Retains up to 60 seconds or 96 MiB of JPEGs in memory. It uses frame presentation times to write a variable-frame-rate H.264 MP4, then verifies the duration and dimensions with FFprobe. Temporary frame files are removed after export. |
 
-This prototype captures video only. JPEG frames keep the buffer and export logic independent of the OS encoder. Encoding runs at export time. A capture gap can hold the last image during playback, and gaze is invalidated where there is no recent screen frame. Source geometry changes discard the old buffer and advance the epoch. Sleep and display reconfiguration stop the session.
+The standalone harness captures video only. JPEG frames keep the buffer and export logic independent of the OS encoder. Encoding runs at export time. A capture gap can hold the last image during playback, and gaze is invalidated where there is no recent screen frame. Source geometry changes discard the old buffer and advance the epoch. Sleep and display reconfiguration stop the session.
 
 ## Handoff to Alejandro and the assistant
 
 Keep the [v1 protocol](../docs/protocol.md) at the handoff. In Electron main, the same `Recorder` supports `manual(nowUs)` or `addGaze(sample)` plus `interval(event, nowUs)`, followed by `writeBundle(clip, parentFolder)`. Session and epoch IDs, viewport dimensions, and clock alignment must be shared with Matt’s worker before live gaze can be enabled. The harness currently exposes manual export. Automatic intervals and gaze are exercised by replay.
 
-The delayed replay test sends the interval `[14 s, 18 s)` at session time 19.2 s. It exports `[4 s, 19 s)`, rebases the gaze at 9.4 s to clip time 5.4 s, and checks the pixels of the extracted MP4 frame. Use [the existing replay fixture](../spikes/screen-sync-lab/media/README.md) or an approved live export for Gemini. The [Gemini smoke runner](../spikes/screen-sync-lab/gemini/README.md) currently accepts replay bundles. A live export uses `source: "manual"` and can be consumed by the future v1 job service.
+The delayed replay test sends the interval `[14 s, 18 s)` at session time 19.2 s. It exports `[4 s, 19 s)`, rebases the gaze at 9.4 s to clip time 5.4 s, and checks the pixels of the extracted MP4 frame. Use [the existing replay fixture](../testing/screen-sync-lab/media/README.md) or an approved live export for Gemini. The [Gemini smoke runner](../testing/screen-sync-lab/gemini/README.md) currently accepts replay bundles. A live export uses `source: "manual"` and can be consumed by the future v1 job service.
 
 ## OS coverage
 

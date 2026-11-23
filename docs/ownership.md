@@ -5,7 +5,7 @@ Read across workstreams to understand the handoffs, and keep edits within the wo
 | Owner | Workstream | Owns |
 | --- | --- | --- |
 | Matt | Models | Webcam processing, model training and inference, stuck-moment detection and timing, and gaze estimation with MediaPipe. [Vision design](vision.md) |
-| Alejandro | Desktop app (`prototypes/doodle/`) | The overlay that offers and displays help (mascot, suggested questions, answer panel, optional doodles), first-run setup and calibration screens, the tray, and wiring the recorder, vision signal and assistant into the app. [Overlay design](../prototypes/doodle/docs/overlay.md) · [Desktop design](desktop-gemini.md#desktop-process-layout) |
+| Alejandro | Desktop app (`apps/desktop/`) | The overlay that offers and displays help (mascot, suggested questions, answer panel, optional doodles), first-run setup and calibration screens, the tray, and wiring the recorder, vision signal and assistant into the app. [Overlay design](../apps/desktop/docs/overlay.md) · [Desktop design](desktop-gemini.md#desktop-process-layout) |
 | Victor | Agentic AI and capture (`agentic_system/`) | The screen recorder module, rolling buffer and clip export. Interpreting the supplied context, choosing models and tools, designing prompts, and deciding what suspected confusion, questions and summary to return. [Workstream](../agentic_system/README.md) · [Assistant request flow](desktop-gemini.md#gemini-request-flow) |
 
 ## Handoff

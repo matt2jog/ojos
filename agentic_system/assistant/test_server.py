@@ -54,7 +54,7 @@ class ServerTests(unittest.TestCase):
         cls.addClassCleanup(workspace.cleanup)
         root = Path(__file__).resolve().parents[2]
         fixture = Path(workspace.name) / "fixture"
-        subprocess.run([sys.executable, str(root / "spikes/screen-sync-lab/media/generate.py"), "--output-dir", str(fixture)],
+        subprocess.run([sys.executable, str(root / "testing/screen-sync-lab/media/generate.py"), "--output-dir", str(fixture)],
                        check=True, capture_output=True, timeout=30)
         cls.manifest = json.loads((fixture / "manifest.json").read_bytes())
         cls.gaze = (fixture / "gaze.json").read_bytes()
