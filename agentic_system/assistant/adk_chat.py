@@ -390,7 +390,7 @@ class ChatService:
             emit("turn.ui", ui)
             ui_tools = []
             if ui["kind"] != "none":
-                root_instructions += skill(ui["kind"])
+                root_instructions += skill(ui["kind"], required=ui.get("reason") == "user_asked")
                 ui_tools.append(ui_tool(turn_id, emit))
             agent = LlmAgent(
                 name="ojos_chat", model=Gemini(model=self.model, client=sdk),

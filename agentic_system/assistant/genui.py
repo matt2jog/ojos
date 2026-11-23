@@ -25,19 +25,22 @@ DECISIONS_URL = "https://generativelanguage.googleapis.com/v1beta/decisions"
 A2UI_VERSION = "v0.9"
 CATALOG_ID = "https://github.com/matt2jog/ojos/catalogs/assist/v1.json"
 SKILL = (Path(__file__).parent / "skills" / "when_to_show_ui.md").read_text(encoding="utf-8")
-WORTH_IT = 0.55
+WORTH_IT = 0.4       # below this, a visual is vetoed...
+CONFIDENT = 0.6      # ...unless the choice itself is this confident
 MAX_COMPONENTS = 24
 MAX_SPEC = 20_000
 
 UI_KINDS = {
     "none": "Words only. A single value, fact, definition, calculation, yes/no, or anything that fits in one or "
             "two sentences with no parts, order or alternatives.",
+    "diagram": "The user asks for a diagram, visual, chart or drawing, or the answer is about how parts connect, "
+               "flow or depend on each other: an architecture, request path, data flow, state machine or protocol.",
     "bug_insight": "A specific error, failing test or wrong output is visible, and the user needs its cause and a concrete fix.",
     "step_by_step": "The answer is a procedure of three or more ordered steps the user will follow.",
     "checklist": "The answer is a set of independent tasks to complete and track, in any order.",
     "comparison": "The user is choosing between two or more options, approaches or versions.",
 }
-LEAD = {"bug_insight": "BugInsight", "step_by_step": "StepByStepGuide", "checklist": "ActionChecklist",
+LEAD = {"diagram": "Diagram", "bug_insight": "BugInsight", "step_by_step": "StepByStepGuide", "checklist": "ActionChecklist",
         "comparison": "ComparisonCard"}
 
 # name -> (required props, optional props). Kept in step with the desktop catalog (a2ui/catalog.tsx).
@@ -49,6 +52,7 @@ CATALOG = {
     "StepByStepGuide": ({"title", "steps"}, {"onDone", "children"}),
     "ActionChecklist": ({"title", "items"}, {"progress", "onSubmit"}),
     "ComparisonCard": ({"title", "options"}, set()),
+    "Diagram": ({"title", "nodes"}, {"edges", "caption", "onNode"}),
 }
 
 CATALOG_DOC = """Ojos A2UI catalog. Each component is a JSON object {"id": "<unique id>", "component": "<Name>", ...props}.
@@ -70,6 +74,10 @@ Pressing it sends you that name and context as the next user turn, so you can re
     "onSubmit"?: Action}  Bind progress to a path and reference the same path in onSubmit's context to learn what is done.
 - ComparisonCard: {"title": str, "options": [{"name": str, "summary"?: str, "pros"?: [str], "cons"?: [str],
     "recommended"?: bool, "action"?: Action}]}
+- Diagram: {"title": str, "nodes": [{"id": str, "label": str (at most 4 words), "detail"?: str (shown when clicked),
+    "tone"?: "default"|"accent"|"success"|"warning"|"error"}], "edges"?: [{"from": nodeId, "to": nodeId, "label"?: str}],
+    "caption"?: str, "onNode"?: Action}  A node-and-arrow diagram laid out top to bottom. Use 3 to 9 nodes. Edges must
+    reference node ids. Give every node a detail so clicking it teaches something.
 
 Example call argument (a JSON string):
 {"components": [
@@ -88,6 +96,24 @@ _TRIVIAL = re.compile(
 _SMALL_TALK = re.compile(r"^\s*(?:hi|hello|hey|thanks|thank you|ok|okay|cool|nice|yes|no|bye)\b[\s!.?]*$", re.I)
 
 
+# What the user literally asked for. An explicit request always wins over the model's judgement.
+_REQUESTS = [
+    ("step_by_step", re.compile(r"\b(step[- ]by[- ]step|walk ?through|walk me through|steps? to|guide me)\b", re.I)),
+    ("checklist", re.compile(r"\b(check ?list|to-?do list|task list)\b", re.I)),
+    ("comparison", re.compile(r"\b(compare|comparison|versus|vs\.?|difference between|pros and cons|side[- ]by[- ]side)\b", re.I)),
+    ("diagram", re.compile(r"\b(diagram|flow ?chart|chart|visuali[sz]e|visuali[sz]ation|visual|draw|sketch|illustrat\w*|"
+                           r"graph|map out|picture|show me how|architecture)\b", re.I)),
+]
+
+
+def requested_kind(question):
+    """The interface family the user explicitly asked for, or None."""
+    for kind, pattern in _REQUESTS:
+        if pattern.search(question):
+            return kind
+    return None
+
+
 def trivially_textual(question):
     """Cheap guard applied before any model call: arithmetic and small talk never get an interface."""
     q = question.strip()
@@ -102,7 +128,8 @@ def decide_ui(api_key, jpeg, question):
     if question.startswith("[UI action]"):
         # A button press on an interface: let the agent update it without re-deciding.
         return {**result, "kind": "followup", "confidence": 1.0, "worth_it": 1.0, "reason": "ui_action"}
-    if trivially_textual(question):
+    asked = requested_kind(question)
+    if trivially_textual(question) and not asked:
         return {**result, "confidence": 1.0, "reason": "trivial_question"}
     blocks = [{"type": "text", "text": f'The user looked confused at their screen and asked: "{question[:2000]}"'}]
     if jpeg:
@@ -130,29 +157,40 @@ def decide_ui(api_key, jpeg, question):
         result["worth_it"] = float(worth.get("noul") or 0)
         result["probabilities"] = {k: float(v) for k, v in (choice.get("probabilities") or {}).items()}
         kind = choice.get("choice") if choice.get("choice") in UI_KINDS else "none"
-        if kind != "none" and result["worth_it"] < WORTH_IT:
+        confidence = float(choice.get("confidence") or 0)
+        if kind != "none" and result["worth_it"] < WORTH_IT and confidence < CONFIDENT:
             kind, result["reason"] = "none", "not_worth_an_interface"
-        result.update(kind=kind, confidence=float(choice.get("confidence") or 0))
+        result.update(kind=kind, confidence=confidence)
     except Exception as error:  # the interface is optional; the written answer must not depend on it
         LOG.warning("UI decision failed (%s); answering in words only", type(error).__name__)
         result["reason"] = "decision_unavailable"
+    if asked and result["kind"] != asked:
+        # They asked to be shown something. Keep the model's own pick only if it chose another interface
+        # with real confidence (e.g. "draw this bug" on a visible error); otherwise give what was asked.
+        if result["kind"] == "none" or result["confidence"] < CONFIDENT or asked == "diagram":
+            result.update(kind=asked, reason="user_asked", confidence=max(result["confidence"], 0.99))
+    elif asked:
+        result["reason"] = "user_asked"
     result["ms"] = round((time.monotonic() - started) * 1000)
     LOG.info("UI decision: %s (worth_it %.2f) in %s ms", result["kind"], result["worth_it"], result["ms"])
     return result
 
 
-def skill(kind):
+def skill(kind, required=False):
     """Instruction text added when the decision allows an interface."""
     lead = (f'A decision model chose the interface family "{kind}", so lead with {LEAD[kind]}.' if kind in LEAD else
             "The user pressed a button on the interface you rendered. Respond to it, and call render_ui again "
             "if an updated or follow-up interface helps (for example the next step, or the applied fix).")
+    must = (" The user explicitly asked to be shown this, so you MUST call render_ui. Use general knowledge for "
+            "the content when the screen does not show it." if required else "")
+    optional = "" if required else " If nothing structured is warranted after all, skip the tool."
     return (
-        "\n\nYou can show an interactive interface under your answer with the render_ui tool. " + lead +
+        "\n\nYou can show an interactive interface under your answer with the render_ui tool. " + lead + must +
         " Call render_ui at most once, BEFORE writing, then give a short written answer as your final message "
         "(never empty, and do not repeat the interface's content). Compose components freely: nest related "
         "components with children, and add ActionButton follow-ups the user is likely to want. Fill every field "
         "with the real names, values, file paths and code visible on the user's screen. Never invent content to "
-        "fill a card. If nothing structured is warranted after all, skip the tool.\n\n" + CATALOG_DOC
+        "fill a card." + optional + "\n\n" + CATALOG_DOC
     )
 
 
@@ -181,6 +219,15 @@ def _validate(spec):
         for key in ("steps", "items", "options", "fixes"):
             if key in item and (not isinstance(item[key], list) or not all(isinstance(row, dict) for row in item[key])):
                 raise ValueError(f'{name}.{key} must be a list of objects.')
+        if name == "Diagram":
+            nodes = item["nodes"]
+            if not isinstance(nodes, list) or not 2 <= len(nodes) <= 12 or not all(
+                    isinstance(n, dict) and isinstance(n.get("id"), str) and isinstance(n.get("label"), str) for n in nodes):
+                raise ValueError('Diagram.nodes must be 2 to 12 objects with string "id" and "label".')
+            node_ids = {n["id"] for n in nodes}
+            for edge in item.get("edges") or []:
+                if not isinstance(edge, dict) or edge.get("from") not in node_ids or edge.get("to") not in node_ids:
+                    raise ValueError("Every Diagram edge needs \"from\" and \"to\" that match node ids.")
         if name == "StepByStepGuide" and len(item["steps"]) < 2:
             raise ValueError("A StepByStepGuide needs at least two steps.")
     if "root" not in ids:

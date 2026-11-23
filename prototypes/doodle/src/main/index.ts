@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut, screen, ipcMain, Menu, nativeImage, powerMonitor, Tray, type Display, type MenuItemConstructorOptions } from 'electron'
+import { app, BrowserWindow, desktopCapturer, globalShortcut, screen, ipcMain, Menu, nativeImage, powerMonitor, Tray, type Display, type MenuItemConstructorOptions } from 'electron'
 import { join } from 'path'
 import { randomUUID } from 'node:crypto'
 import { readFile, rm } from 'node:fs/promises'
@@ -149,6 +149,31 @@ async function nudge(interval?: Interval): Promise<void> {
   }
 }
 
+/**
+ * A screenshot of the configured display taken now, as base64 JPEG, for questions that arrive
+ * without a clip (typed chat messages and follow-ups). The overlay is excluded from captures, so
+ * the agent sees the user's apps, not the Ojos panel. Returns undefined if capture is unavailable.
+ */
+async function freshStill(): Promise<string | undefined> {
+  try {
+    const target = configuredDisplay() ?? screen.getPrimaryDisplay()
+    const scale = Math.min(1, 1600 / target.size.width)
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: Math.round(target.size.width * scale), height: Math.round(target.size.height * scale) }
+    })
+    const source = sources.find((item) => item.display_id === String(target.id)) ?? sources[0]
+    if (!source || source.thumbnail.isEmpty()) return undefined
+    for (const quality of [80, 60, 40]) {
+      const jpeg = source.thumbnail.toJPEG(quality)
+      if (jpeg.length <= 1_300_000) return jpeg.toString('base64') // the backend accepts up to 1.4 MB
+    }
+  } catch (error) {
+    console.warn('Could not capture the screen for this question:', (error as Error).message)
+  }
+  return undefined
+}
+
 /** Taking a fresh screen suggestion opens a chat. Typed follow-ups reuse its ID. */
 async function ask(question: string | undefined, picked = false): Promise<void> {
   if (hidden || setupContents() || chatRequest || chatListOpen || (picked && !pending) ||
@@ -168,11 +193,15 @@ async function ask(question: string | undefined, picked = false): Promise<void> 
   win.webContents.send('reset', { gaze: evidence?.gaze, question: message, fresh })
 
   try {
+    // A question without a clip (typed, or a follow-up) still gets to see the screen as it is now.
+    const still = evidence?.still ?? (message.startsWith('[UI action]') ? undefined : await freshStill())
+    if (!current()) return
     const screenContext = evidence ? JSON.stringify({
       clip_summary: evidence.summary, still_time_us: evidence.stillTimeUs, gaze: evidence.evidence
-    }) : undefined
+    }) : still ? JSON.stringify({ note: 'A screenshot of the user\'s screen taken when they sent this message is attached. No gaze data for this turn.' }) : undefined
+    console.log(`[ask] ${evidence ? 'clip evidence' : still ? `fresh screenshot (${Math.round(still.length * 0.75 / 1024)} KB)` : 'no screen image'}`)
     const answer = await streamChatTurn({
-      chatId: id, turnId: randomUUID(), message, screenContext, jpeg: evidence?.still,
+      chatId: id, turnId: randomUUID(), message, screenContext, jpeg: still,
       doodles: DOODLES && Boolean(evidence?.still),
       signal: AbortSignal.any([controller.signal, AbortSignal.timeout(125_000)])
     }, (event) => {
@@ -603,7 +632,19 @@ app.whenReady().then(() => {
   })
 
   const keys: Record<string, () => void> = {
-    'CommandOrControl+Shift+O': () => {
+    'CommandOrControl+Shift+O': async () => {
+      // The shortcut needs a live recording to cut a clip from. If capture stopped (a permission
+      // blip, sleep, a display change), try to bring it back instead of silently doing nothing.
+      if (!capture?.isRecording()) {
+        console.warn('Help shortcut pressed while not recording; restarting capture.')
+        await startRecording()
+        if (!capture?.isRecording()) {
+          console.warn('Capture is still not running. Open Settings to check camera and screen permissions.')
+          openSettings()
+          return
+        }
+      }
+      console.log('Help shortcut: asking about the last 20 seconds.')
       void nudge()
     },
     'CommandOrControl+Shift+X': dismiss,

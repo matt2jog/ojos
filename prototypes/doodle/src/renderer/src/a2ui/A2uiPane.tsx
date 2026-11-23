@@ -6,6 +6,7 @@ import { assertRenderable, ojosCatalog } from './catalog'
 
 type Surface = Parameters<typeof A2uiSurface>[0]['surface']
 const LABEL: Record<string, string> = {
+  diagram: 'diagram',
   bug_insight: 'bug insight',
   step_by_step: 'step by step',
   checklist: 'checklist',
@@ -106,7 +107,7 @@ export function A2uiPane(): React.JSX.Element | null {
       {decision && (
         <div className="a2ui-decision" title={`worth an interface: ${Math.round(decision.worth_it * 100)}%${decision.reason ? ` · ${decision.reason}` : ''}`}>
           ✦ decision model: {LABEL[decision.kind] ?? decision.kind}
-          {decision.reason === 'trivial_question' ? ' (simple question)' : decision.kind === 'followup' ? '' : ` ${pct}%`}
+          {decision.reason === 'trivial_question' ? ' (simple question)' : decision.reason === 'user_asked' ? ' (you asked for it)' : decision.reason === 'agent_chose_words' ? ' (the agent answered in words)' : decision.kind === 'followup' ? '' : ` ${pct}%`}
         </div>
       )}
       {waiting && <div className="a2ui-wait">Building an interface for this…</div>}

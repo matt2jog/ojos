@@ -128,10 +128,13 @@ export class RecordingService {
       await worker.ready
       if (lane === 'confusion') active.confusionReady = true
     })
-    ipcMain.handle('capture:native-frame', (event, lane: NativeLane, frame) => {
-      const worker = owner(event)?.workers.get(lane)
-      if (!worker) throw new Error('Vision worker is closed.')
-      return worker.frame(frame, lane === 'confusion' ? triggerHigh() : undefined)
+    ipcMain.handle('capture:native-frame', async (event, lane: NativeLane, frame) => {
+      const active = owner(event)
+      const worker = active?.workers.get(lane)
+      if (!active || !worker) throw new Error('Vision worker is closed.')
+      const result = await worker.frame(frame, lane === 'confusion' ? triggerHigh() : undefined)
+      if (lane === 'confusion') this.#onset(active.spec, result)
+      return result
     })
     ipcMain.on('capture:interval', (event, interval: Interval) => {
       const active = owner(event)
@@ -175,6 +178,41 @@ export class RecordingService {
     if (active.warnings.has(lane)) return
     active.warnings.add(lane)
     console.warn(`[capture:${lane}] ${reason}`)
+  }
+
+  // The confusion worker publishes an interval when the confusion ENDS (or after an 8 s cap), which
+  // makes help arrive after the moment has passed. This fires at the start instead: the smoothed
+  // score held at or above the user's sensitivity for one second. The worker's own later interval
+  // is ignored while this offer is showing, and offers are at least 15 s apart.
+  #high: { since: number; peak: number; fired: boolean } | null = null
+  #lastOffer = -Infinity
+  #lastScoreLog = 0
+  #onset(spec: CaptureSpec, result: unknown): void {
+    const sample = (result as { sample?: { valid?: boolean; confidence?: number | null; time_us?: number } } | null)?.sample
+    if (!sample || typeof sample.time_us !== 'number') return
+    const score = sample.valid && typeof sample.confidence === 'number' ? sample.confidence : null
+    const high = triggerHigh()
+    if (Date.now() - this.#lastScoreLog > 2000) {
+      this.#lastScoreLog = Date.now()
+      console.log(`[confusion] score ${score === null ? 'n/a (no face)' : score.toFixed(2)} | offers help at ${high.toFixed(2)} held for 1 s`)
+    }
+    if (spec.mode !== 'record') return
+    if (score === null || score < high) {
+      // one dip just under the line doesn't end the run; a clear drop does
+      if (score === null || score < high - 0.2) this.#high = null
+      return
+    }
+    this.#high ??= { since: sample.time_us, peak: score, fired: false }
+    this.#high.peak = Math.max(this.#high.peak, score)
+    const held = sample.time_us - this.#high.since
+    if (this.#high.fired || held < 1_000_000 || sample.time_us - this.#lastOffer < 15_000_000) return
+    this.#high.fired = true
+    this.#lastOffer = sample.time_us
+    console.log(`[confusion] onset: peak ${this.#high.peak.toFixed(2)} held ${(held / 1e6).toFixed(1)} s -> offering help`)
+    this.onInterval({
+      type: 'interval.finalized', schema_version: 1, session_id: spec.sessionId, capture_epoch: spec.epoch,
+      event_id: randomUUID(), source: 'live', start_us: Math.max(0, this.#high.since), end_us: sample.time_us
+    })
   }
 
   isRecording(): boolean { return this.#active?.spec.mode === 'record' }
