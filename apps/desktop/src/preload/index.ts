@@ -36,7 +36,10 @@ const setup: SetupApi = {
   fullscreen: (id) => ipcRenderer.invoke('setup:fullscreen', id),
   finish: () => ipcRenderer.invoke('setup:finish'),
   settings: () => ipcRenderer.invoke('settings:get'),
-  ...(__OJOS_DEV__ ? { visionDebug: () => ipcRenderer.invoke('settings:vision-debug') } : {}),
+  ...(__OJOS_DEV__ ? {
+    visionDebug: () => ipcRenderer.invoke('settings:vision-debug'),
+    stopVisionDebug: () => ipcRenderer.invoke('settings:vision-debug-stop')
+  } : {}),
   setSensitivity: (high) => ipcRenderer.invoke('settings:sensitivity', high),
   closeSettings: () => ipcRenderer.invoke('settings:close'),
   settingsSetup: (view) => ipcRenderer.invoke('settings:setup', view),

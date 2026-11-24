@@ -34,7 +34,7 @@ For cloud scopes, chat orchestration, history, camera frames, calibration, and f
 
 ## Debug vision
 
-From `apps/desktop`, use `npm run dev` to run a dev build or `npm run package:dev` to package Ojos Dev in `apps/desktop/release-dev` with the usual staged runtime. Ojos Dev uses its own application ID and profile. Open **Settings → Vision debugging → Open preview** during an active capture session. The preview shows the webcam on the left and the model points, mean, and max box in display coordinates on the right. The chart shows the rolling confidence score, the current threshold, and finalized intervals as shaded bands. Webcam previews are generated on demand and stay on device. The normal production build omits this panel.
+From `apps/desktop`, use `npm run dev` to run a dev build or `npm run package:dev` to package Ojos Dev in `apps/desktop/release-dev` with the usual staged runtime. Ojos Dev uses its own application ID and profile. Open **Settings → Vision debugging → Open preview** during an active capture session. The preview shows the webcam on the left and the model points, mean, and max box in display coordinates on the right. The chart shows the rolling confidence score, the current threshold, and finalized intervals as shaded bands. Webcam previews are generated on demand and stay on device. Screen capture and detection continue while the preview is open. Assistant clip and screenshot requests resume once fresh footage is available after closing the preview. The normal production build omits this panel.
 
 Use the command line for the last annotated replay or to watch for the next live automatic clip:
 

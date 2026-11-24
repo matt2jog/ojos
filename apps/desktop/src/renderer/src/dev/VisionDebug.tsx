@@ -109,7 +109,11 @@ export default function VisionDebug({ threshold }: { threshold: number }): React
       timer = setTimeout(poll, 400)
     }
     void poll()
-    return () => { disposed = true; clearTimeout(timer) }
+    return () => {
+      disposed = true
+      clearTimeout(timer)
+      void window.setup.stopVisionDebug?.().catch(() => {})
+    }
   }, [open])
 
   return (
@@ -117,7 +121,7 @@ export default function VisionDebug({ threshold }: { threshold: number }): React
       <div className="settings-row">
         <div>
           <h3 id="vision-debug-title">Vision debugging</h3>
-          <p className="perm-why">Live camera, gaze, and the last 60 seconds of confidence. Preview stays on this device.</p>
+          <p className="perm-why">Live camera, gaze, and the last 60 seconds of confidence. Clip analysis pauses during the preview.</p>
         </div>
         <button className="btn btn-small" aria-expanded={open} aria-controls="vision-debug-panel"
           onClick={() => { setSnapshot(null); setError(false); setOpen(!open) }}>{open ? 'Close preview' : 'Open preview'}</button>

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, net, protocol, session, type Display, type IpcMainInvokeEvent, type IpcMainEvent } from 'electron'
+import { app, BrowserWindow, ipcMain, net, protocol, session, type Display, type IpcMainInvokeEvent, type IpcMainEvent, type WebContents } from 'electron'
 import { performance } from 'node:perf_hooks'
 import { randomUUID } from 'node:crypto'
 import { join, resolve, relative, isAbsolute } from 'node:path'
@@ -10,7 +10,7 @@ import { Recorder, writeBundle } from '@recorder'
 import type { CalibrationGeometry } from '@vision/calibration.mjs'
 import { paneGazeIoU } from '../../shared/gazeGeometry'
 import type { ViewportRect } from '../../shared/capture'
-import type { AudioBlock, CalibrationReady, CalibrationStage, CameraGeometry, CaptureSpec, Frame, Interval, NativeLane, Observation, VisionExport } from '../../shared/capture'
+import type { AudioBlock, CalibrationReady, CalibrationStage, CameraGeometry, CaptureSpec, Frame, Interval, NativeLane, Observation, VisionDebugSnapshot, VisionExport } from '../../shared/capture'
 import type { CaptureStatus } from '../../shared/setup'
 import { launchNativeVision } from '../nativeVision'
 import { displayInfo, storeGet, storeSet, triggerHigh } from '../setup'
@@ -45,6 +45,8 @@ export class RecordingService {
   #exporting: Promise<unknown> = Promise.resolve()
   #platform = recordingPlatform()
   #monitor: NodeJS.Timeout
+  #debugView?: WebContents
+  #debugCameraCutoffUs = -1
 
   constructor(
     private onInterval: (event: Interval) => void,
@@ -350,11 +352,31 @@ export class RecordingService {
     clearInterval(this.#monitor)
   }
 
-  async visionDebugSnapshot() {
+  #endVisionDebug = (): void => {
+    this.#debugView?.removeListener('destroyed', this.#endVisionDebug)
+    this.#debugView = undefined
+    // Allow the compositor to remove the preview before accepting screen evidence again.
+    this.#debugCameraCutoffUs = nowUs() + 250_000
+  }
+
+  stopVisionDebug(view: WebContents): void {
+    if (this.#debugView === view) this.#endVisionDebug()
+  }
+
+  canUseScreenEvidence(sinceUs: number): boolean {
+    return !__OJOS_DEV__ || (!this.#debugView && sinceUs > this.#debugCameraCutoffUs)
+  }
+
+  async visionDebugSnapshot(view: WebContents): Promise<VisionDebugSnapshot | null> {
     const active = this.#active
     if (!__OJOS_DEV__ || active?.spec.mode !== 'record' || active.win.isDestroyed()) return null
+    if (this.#debugView !== view) {
+      this.#debugView?.removeListener('destroyed', this.#endVisionDebug)
+      this.#debugView = view
+      view.once('destroyed', this.#endVisionDebug)
+    }
     const snapshot = await active.win.webContents.executeJavaScript('window.visionDebugSnapshot?.()')
-    return this.#active === active ? snapshot : null
+    return this.#active === active && this.#debugView === view ? snapshot ?? null : null
   }
 
   async gazedAtPane(interval: Interval, pane: ViewportRect, threshold: number): Promise<boolean> {
@@ -385,6 +407,9 @@ export class RecordingService {
     const { recorder, spec } = active
     const clip = interval ? recorder.interval(interval, this.clock()) : recorder.manual(now)
     const { clip_start_us: start, clip_end_us: end } = clip.manifest
+    if (!this.canUseScreenEvidence(spec.startUs + start)) {
+      throw new Error('Waiting for screen footage captured after the vision preview.')
+    }
     const vision: VisionExport | undefined = await active.win.webContents.executeJavaScript(`window.exportVision(${start},${end})`)
     const sidecar: VisionExport = vision ?? exportVisionSeries({ sessionId: spec.sessionId, captureEpoch: spec.epoch,
       clipStartUs: start, clipEndUs: end, width: spec.viewportWidth, height: spec.viewportHeight })

@@ -49,6 +49,7 @@ export interface SetupApi {
   finish(): Promise<void>
   settings(): Promise<AppSettings>
   visionDebug?(): Promise<VisionDebugSnapshot | null>
+  stopVisionDebug?(): Promise<void>
   setSensitivity(high: number): Promise<void>
   closeSettings(): Promise<void>
   settingsSetup(view: 'calibrate' | 'welcome'): Promise<void>

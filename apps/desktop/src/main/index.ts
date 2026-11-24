@@ -156,6 +156,8 @@ async function nudge(interval?: Interval): Promise<void> {
  * the agent sees the user's apps, not the Ojos panel. Returns undefined if capture is unavailable.
  */
 async function freshStill(): Promise<string | undefined> {
+  const startedUs = Math.round(performance.now() * 1000)
+  if (__OJOS_DEV__ && capture?.canUseScreenEvidence(startedUs) === false) return undefined
   try {
     const target = configuredDisplay() ?? screen.getPrimaryDisplay()
     const scale = Math.min(1, 1600 / target.size.width)
@@ -163,6 +165,7 @@ async function freshStill(): Promise<string | undefined> {
       types: ['screen'],
       thumbnailSize: { width: Math.round(target.size.width * scale), height: Math.round(target.size.height * scale) }
     })
+    if (__OJOS_DEV__ && capture?.canUseScreenEvidence(startedUs) === false) return undefined
     const source = sources.find((item) => item.display_id === String(target.id)) ?? sources[0]
     if (!source || source.thumbnail.isEmpty()) return undefined
     for (const quality of [80, 60, 40]) {
@@ -500,9 +503,13 @@ ipcMain.handle('settings:get', (event): AppSettings => {
 })
 if (__OJOS_DEV__) ipcMain.handle('settings:vision-debug', async (event) => {
   requireSettings(event)
-  const snapshot = await capture?.visionDebugSnapshot()
+  const snapshot = await capture?.visionDebugSnapshot(event.sender)
   requireSettings(event)
   return snapshot ?? null
+})
+if (__OJOS_DEV__) ipcMain.handle('settings:vision-debug-stop', (event) => {
+  requireSettings(event)
+  capture?.stopVisionDebug(event.sender)
 })
 ipcMain.handle('settings:sensitivity', (event, value: number) => {
   requireSettings(event)
