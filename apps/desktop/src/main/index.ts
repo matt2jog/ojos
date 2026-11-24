@@ -591,7 +591,7 @@ app.whenReady().then(() => {
   if (process.platform === 'darwin') {
     app.dock?.setIcon(nativeImage.createFromPath(join(app.getAppPath(), 'resources', 'icon.png')))
   } else if (process.platform === 'win32' && app.isPackaged) {
-    app.setAppUserModelId('com.ojos.desktop')
+    app.setAppUserModelId(__OJOS_DEV__ ? 'com.ojos.desktop.dev' : 'com.ojos.desktop')
     const options = { program: process.execPath, iconPath: process.execPath, iconIndex: 0 }
     if (!app.setUserTasks([
       { ...options, arguments: '--settings', title: 'Settings', description: 'Open Ojos Settings.' },
