@@ -10,7 +10,7 @@ The services use the latest version of the `ojos-gemini-key` Secret Manager secr
 gcloud secrets versions add ojos-gemini-key --project=ojos-matt2jog --data-file=/path/to/key.txt
 ```
 
-On either service, `GET /healthz` shows whether the key is configured. It does not send a Gemini request. A successful end-to-end check also requires a key with access to the models used by Ojos, including Gemini 4 Hydrogen for the default clip and chat paths.
+On either service, `GET /health` shows whether the key is configured. It does not send a Gemini request. A successful end-to-end check also requires a key with access to the models used by Ojos, including Gemini 4 Hydrogen for the default clip and chat paths.
 
 ## Configure the desktop
 

@@ -98,9 +98,9 @@ jobs:
             --min 0 --min-instances 0 --max-instances "$max_instances" \
             --set-env-vars 'OJOS_GEMINI_KEY_FILE=/var/run/secrets/ojos-gemini/key' \
             --set-secrets "OJOS_CLOUD_TOKEN=ojos-$SCOPE-token:1,/var/run/secrets/ojos-gemini/key=ojos-gemini-key:latest" \
-            --startup-probe 'httpGet.path=/healthz,httpGet.port=8080,periodSeconds=5,timeoutSeconds=3,failureThreshold=12'
+            --startup-probe 'httpGet.path=/health,httpGet.port=8080,periodSeconds=5,timeoutSeconds=3,failureThreshold=12'
       - name: Verify deployment
         run: |
           url=$(gcloud run services describe "ojos-$SCOPE" --project "$PROJECT" --region "$REGION" --format='value(status.url)')
-          curl --fail --silent --show-error --retry 5 "$url/healthz" | jq -e '.status == "ok"'
-          test "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$url/v1/analyze")" = 401
+          curl --fail --silent --show-error --retry 5 "$url/health" | jq -e '.status == "ok"'
+          test "$(curl -sS -o /dev/null -w '%{http_code}' --data '{}' "$url/v1/analyze")" = 401

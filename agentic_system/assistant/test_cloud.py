@@ -39,7 +39,7 @@ class CloudTests(unittest.IsolatedAsyncioTestCase):
 
     def test_readiness_authentication_and_route_allowlist(self):
         self.key = ""
-        self.assertEqual(self.request("GET", "/healthz", authorized=False),
+        self.assertEqual(self.request("GET", "/health", authorized=False),
                          (200, {"status": "ok", "gemini_configured": False}))
         self.assertEqual(self.request("POST", "/v1/analyze", b"a", authorized=False)[0], 401)
         self.assertEqual(self.request("POST", "/v1/analyze", b"a"),

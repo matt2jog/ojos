@@ -47,7 +47,7 @@ class CloudHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        if self.path == "/healthz":
+        if self.path == "/health":
             self.json_response(HTTPStatus.OK, {"status": "ok", "gemini_configured": bool(self.server.key())})
         else:
             self.json_response(HTTPStatus.NOT_FOUND, {"error": "not_found"})
