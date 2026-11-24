@@ -11,7 +11,7 @@ export function launchNativeVision(lane: NativeLane, spec: Pick<CaptureSpec, 'se
   const model = lane === 'model2' ? 'eth-xgaze' : 'confusion'
   const asset = lane === 'model2' ? 'eth-xgaze-resnet50-epoch24-camera-plane-ridge-v1' : 'confusion-devemo-plus-gru-8hz-1'
   const env: NodeJS.ProcessEnv = { ...process.env, PYTHONDONTWRITEBYTECODE: '1' }
-  for (const key of ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'OJOS_LOCAL_TOKEN']) delete env[key]
+  for (const key of ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'OJOS_LOCAL_TOKEN', 'OJOS_CLOUD_TOKEN']) delete env[key]
   const child = spawn(python(lane), [
     '-u', join(project(), 'models', 'vision', 'native_worker.py'), model, '--artifact', join(assets(), asset),
     '--session-id', spec.sessionId, '--capture-epoch', String(spec.epoch)

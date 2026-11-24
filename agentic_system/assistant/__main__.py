@@ -20,6 +20,7 @@ def parse_args() -> argparse.Namespace:
     analyze.add_argument("--bundle", type=Path, required=True)
     server = commands.add_parser("serve", help="Serve desktop clip jobs on loopback")
     server.add_argument("--port", type=int, default=8766)
+    server.add_argument("--chat-only", action="store_true", help="Serve local chat using the configured cloud model relay")
     server.add_argument("--chat-db", type=Path, help="Local SQLite file for persistent ADK chat history")
     for command in (analyze, server):
         command.add_argument("--model", default=DEFAULT_BASELINE_MODEL)
@@ -52,7 +53,9 @@ def live_provider(args: argparse.Namespace) -> GeminiProvider:
 def main() -> int:
     args = parse_args()
     try:
-        analyzer = BaselineAnalyzer(live_provider(args), include_audio=os.environ.get("OJOS_CLIP_PLAYBACK_AUDIO") == "1")
+        chat_only = args.command == "serve" and args.chat_only
+        analyzer = None if chat_only else BaselineAnalyzer(
+            live_provider(args), include_audio=os.environ.get("OJOS_CLIP_PLAYBACK_AUDIO") == "1")
         if args.command == "serve":
             token = os.environ.get("OJOS_LOCAL_TOKEN", "")
             if not token:
@@ -62,7 +65,13 @@ def main() -> int:
                 from .adk_chat import ChatService
 
                 roots = [path for path in os.environ.get("OJOS_CHAT_ROOTS", "").split(os.pathsep) if path]
-                chat = ChatService(gemini_api_key(), os.environ.get("OJOS_CHAT_MODEL", args.model), args.chat_db, roots)
+                relay = os.environ.get("OJOS_MODEL_RELAY_URL", "") if chat_only else ""
+                cloud_token = os.environ.get("OJOS_CLOUD_TOKEN", "").strip() if chat_only else ""
+                if chat_only and not (relay and cloud_token):
+                    raise ValueError("Cloud chat requires a model relay and an access token")
+                chat = ChatService("ojos-cloud" if chat_only else gemini_api_key(),
+                                   os.environ.get("OJOS_CHAT_MODEL", args.model), args.chat_db, roots,
+                                   relay_url=relay, cloud_token=cloud_token)
             serve(analyzer, token=token, port=args.port, chat=chat)
         else:
             analysis = analyzer.analyze(load_bundle(args.bundle))

@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { TRIGGER_RANGE, type AppSettings } from '../../../shared/setup'
+
+const VisionDebug = __OJOS_DEV__ ? lazy(() => import('../dev/VisionDebug')) : null
 
 const CONFUSION_STATUS = {
   running: 'Running',
@@ -94,9 +96,13 @@ export function Settings(): React.JSX.Element {
           <dd>{settings ? { local: 'Local assistant configured', remote: 'Remote endpoint configured',
             unconfigured: 'Needs configuration' }[settings.clipAssistant] : 'Checking…'}</dd>
           <dt>Gemini chat</dt>
-          <dd>{settings ? (settings.chatConfigured ? 'Configured' : 'Needs a Gemini key') : 'Checking…'}</dd>
+          <dd>{settings ? (settings.chatConfigured ? 'Configured' : 'Needs configuration') : 'Checking…'}</dd>
         </dl>
       </section>
+
+      {VisionDebug && window.setup.visionDebug && <Suspense fallback={null}>
+        <VisionDebug threshold={settings?.sensitivity ?? sensitivity} />
+      </Suspense>}
 
       {error && <p className="perm-why settings-error" role="alert">{error}</p>}
       <footer className="setup-foot">

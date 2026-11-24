@@ -1,6 +1,6 @@
 import { VisionSession, connectWebEyeTrack } from '@vision/index.mjs'
 import type { Tracker } from '@vision/calibration.mjs'
-import type { CalibrationReady, CameraGeometry, CaptureBridge, CaptureSpec, NativeLane, VisionExport } from '../../../shared/capture'
+import type { CalibrationReady, CameraGeometry, CaptureBridge, CaptureSpec, Interval, NativeLane, VisionDebugSnapshot, VisionExport } from '../../../shared/capture'
 import workletUrl from './pcm.js?url'
 
 declare global {
@@ -8,6 +8,7 @@ declare global {
     capture: CaptureBridge
     startCapture: (spec: CaptureSpec) => Promise<CameraGeometry | CalibrationReady | null>
     exportVision: (startUs: number, endUs: number) => VisionExport | undefined
+    visionDebugSnapshot?: () => Promise<VisionDebugSnapshot | null>
     observeCalibration: (enabled: boolean) => Promise<Tracker[]>
     refreshCalibration: () => Promise<void>
   }
@@ -122,6 +123,20 @@ function nativeLane(lane: NativeLane): (packet: { frame: VideoFrame; timeUs: num
   }
 }
 
+async function previewJpeg(frame: VideoFrame): Promise<string> {
+  const width = Math.min(480, frame.displayWidth)
+  const height = Math.max(1, Math.round(frame.displayHeight * width / frame.displayWidth))
+  const canvas = new OffscreenCanvas(width, height)
+  canvas.getContext('2d')!.drawImage(frame, 0, 0, width, height)
+  const image = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.7 })
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result).split(',')[1])
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(image)
+  })
+}
+
 async function startVision(track: MediaStreamTrack, spec: CaptureSpec, camera: CameraGeometry): Promise<Tracker[]> {
   const geometry = { ...camera, displayId: spec.displayId, displayScale: spec.displayScale,
     rotationDeg: spec.rotationDeg, viewportWidth: spec.viewportWidth, viewportHeight: spec.viewportHeight }
@@ -193,9 +208,37 @@ async function startVision(track: MediaStreamTrack, spec: CaptureSpec, camera: C
   const workers = spec.mode === 'calibrate' ? { ...readyWorkers } : Object.fromEntries(['model1', 'model2', 'confusion'].map((lane) => [
     lane, async (packet: Parameters<ReturnType<typeof nativeLane>>[0]) => readyWorkers[lane]?.(packet) ?? null
   ]))
+  let debugIntervals: Interval[] = []
+  let previewRequest: ((frame: VideoFrame, timeUs: number) => void) | undefined
+  if (__OJOS_DEV__ && spec.mode === 'record') {
+    window.visionDebugSnapshot = async () => {
+      const camera = await new Promise<VisionDebugSnapshot['camera']>((resolve) => {
+        if (previewRequest) { resolve(undefined); return }
+        const timer = setTimeout(() => { previewRequest = undefined; resolve(undefined) }, 400)
+        previewRequest = (frame, timeUs) => {
+          previewRequest = undefined
+          clearTimeout(timer)
+          void previewJpeg(frame).then((jpeg) => resolve({ timeUs, jpeg }), () => resolve(undefined))
+        }
+      })
+      const endUs = clockUs()
+      if (endUs <= 0) return null
+      const startUs = Math.max(0, endUs - 60_000_000)
+      const result = vision?.exportClip(startUs, endUs) as VisionExport | undefined
+      if (!result) return null
+      return { startUs, endUs, camera, gaze: result.gaze,
+        intervals: debugIntervals.filter(({ start_us, end_us }) => start_us < endUs && end_us > startUs) }
+    }
+  }
   vision = new VisionSession({
     sessionId: spec.sessionId, captureEpoch: spec.epoch, geometry, profiles, workers, clockUs,
-    onInterval: media.interval,
+    onInterval: (interval: Interval) => {
+      if (__OJOS_DEV__ && spec.mode === 'record') {
+        debugIntervals = debugIntervals.filter(({ end_us }) => end_us > clockUs() - 60_000_000)
+        debugIntervals.push(interval)
+      }
+      media.interval(interval)
+    },
     onObservation: (tracker, timeUs, raw) => {
       if (observing) media.observation({ tracker, timeUs, raw })
     },
@@ -206,7 +249,10 @@ async function startVision(track: MediaStreamTrack, spec: CaptureSpec, camera: C
     vision?.updateProfiles(updated)
   }
   let frameId = 0
-  void frames(track, (frame, timeUs) => vision!.submit(frame, timeUs, ++frameId))
+  void frames(track, (frame, timeUs) => {
+    vision!.submit(frame, timeUs, ++frameId)
+    if (__OJOS_DEV__) previewRequest?.(frame, timeUs)
+  })
     .catch((error: Error) => media.ended(error.message))
   return trackers
 }

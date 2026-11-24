@@ -4,13 +4,20 @@ import {pathToFileURL} from 'node:url';
 
 // Use in the Electron main process or run directly against a bundle directory.
 export async function analyzeBundle({manifest, gaze, video, token, baseUrl = 'http://127.0.0.1:8766',
-                                     signal = AbortSignal.timeout(120_000)}) {
-  if (!token) throw new Error('Set OJOS_LOCAL_TOKEN to the same token as the server');
+                                     cloud = false, signal = AbortSignal.timeout(120_000)}) {
+  if (!token) throw new Error('Configure an access token for the assistant');
   const headers = {Authorization: `Bearer ${token}`};
   const form = new FormData();
   form.set('manifest', JSON.stringify(manifest));
   form.set('gaze', JSON.stringify(gaze));
   form.set('video', new Blob([video], {type: 'video/mp4'}), 'video.mp4');
+
+  if (cloud) {
+    const response = await fetch(new URL('/v1/analyze', baseUrl), {method: 'POST', headers, body: form, signal});
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.message || result.error || `Cloud analysis returned HTTP ${response.status}`);
+    return result;
+  }
 
   const uploaded = await fetch(new URL('/v1/jobs', baseUrl), {method: 'POST', headers, body: form, signal});
   if (uploaded.status !== 202) throw new Error(`Upload returned HTTP ${uploaded.status}: ${await uploaded.text()}`);
@@ -43,15 +50,19 @@ export async function analyzeBundle({manifest, gaze, video, token, baseUrl = 'ht
 }
 
 async function runCli() {
-  const [folder, baseUrl] = process.argv.slice(2);
+  const supplied = process.argv.slice(2);
+  const cloud = supplied.includes('--cloud');
+  const [folder, baseUrl] = supplied.filter(arg => arg !== '--cloud');
   try {
-    if (!folder) throw new Error('Usage: node agentic_system/assistant/desktop-client.mjs <bundle-folder> [base-url]');
+    if (!folder || (cloud && !baseUrl)) throw new Error('Usage: node agentic_system/assistant/desktop-client.mjs <bundle-folder> [base-url] [--cloud]');
     const [manifest, gaze, video] = await Promise.all([
       readFile(join(folder, 'manifest.json'), 'utf8').then(JSON.parse),
       readFile(join(folder, 'gaze.json'), 'utf8').then(JSON.parse),
       readFile(join(folder, 'video.mp4')),
     ]);
-    console.log(JSON.stringify(await analyzeBundle({manifest, gaze, video, baseUrl, token: process.env.OJOS_LOCAL_TOKEN}), null, 2));
+    if (cloud && new URL(baseUrl).protocol !== 'https:') throw new Error('Cloud analysis requires HTTPS');
+    const token = (cloud ? process.env.OJOS_CLOUD_TOKEN : process.env.OJOS_LOCAL_TOKEN)?.trim();
+    console.log(JSON.stringify(await analyzeBundle({manifest, gaze, video, baseUrl, token, cloud}), null, 2));
   } catch (error) {
     console.error(`Ojos desktop client: ${error.message}`);
     process.exitCode = 1;

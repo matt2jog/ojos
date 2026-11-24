@@ -120,7 +120,7 @@ def trivially_textual(question):
     return bool(_TRIVIAL.match(q) or _SMALL_TALK.match(q) or len(q) < 8)
 
 
-def decide_ui(api_key, jpeg, question):
+def decide_ui(api_key, jpeg, question, *, relay_url="", cloud_token=""):
     """Returns {"kind", "confidence", "worth_it", "probabilities", "ms", "model", "reason"}; "none" on any failure."""
     started = time.monotonic()
     result = {"kind": "none", "confidence": 0.0, "worth_it": 0.0, "probabilities": {}, "model": DECISION_MODEL,
@@ -148,9 +148,11 @@ def decide_ui(api_key, jpeg, question):
                "criteria": UI_KINDS},
     }}
     try:
+        endpoint = f"{relay_url.rstrip('/')}/v1beta/decisions" if relay_url else DECISIONS_URL
+        auth = {"Authorization": f"Bearer {cloud_token}"} if relay_url else {"x-goog-api-key": api_key}
         request = urllib.request.Request(
-            DECISIONS_URL, data=json.dumps(body).encode("utf-8"), method="POST",
-            headers={"x-goog-api-key": api_key, "Content-Type": "application/json"})
+            endpoint, data=json.dumps(body).encode("utf-8"), method="POST",
+            headers={**auth, "Content-Type": "application/json"})
         with urllib.request.urlopen(request, timeout=8) as response:
             answers = json.loads(response.read())["answers"]
         worth, choice = answers.get("worth_it", {}), answers.get("ui", {})

@@ -165,7 +165,7 @@ class _Job:
 class JobServer:
     """State container and worker dispatcher used by the HTTP handler."""
 
-    def __init__(self, analyzer: BaselineAnalyzer, token: str, chat=None):
+    def __init__(self, analyzer: BaselineAnalyzer | None, token: str, chat=None):
         if not token:
             raise ValueError("token must not be empty")
         self.analyzer = analyzer
@@ -344,7 +344,7 @@ class _Handler(BaseHTTPRequestHandler):
             if self._authorized():
                 self._chat_turn(match[1])
             return
-        if route != "/v1/jobs":
+        if route != "/v1/jobs" or self.state.analyzer is None:
             self._send(HTTPStatus.NOT_FOUND, {"error": "not_found"})
             return
         if not self._authorized():
@@ -542,13 +542,13 @@ class _HTTPServer(ThreadingHTTPServer):
         return self.ojos_state
 
 
-def build_server(analyzer: BaselineAnalyzer, *, token: str, port: int = 8765, chat=None) -> _HTTPServer:
+def build_server(analyzer: BaselineAnalyzer | None, *, token: str, port: int = 8765, chat=None) -> _HTTPServer:
     """Build a testable server.  Call ``server.shutdown()`` to stop it."""
 
     return _HTTPServer(("127.0.0.1", port), JobServer(analyzer, token, chat))
 
 
-def serve(analyzer: BaselineAnalyzer, *, token: str, port: int = 8766, chat=None) -> None:
+def serve(analyzer: BaselineAnalyzer | None, *, token: str, port: int = 8766, chat=None) -> None:
     """Serve the local prototype until interrupted."""
 
     server = build_server(analyzer, token=token, port=port, chat=chat)

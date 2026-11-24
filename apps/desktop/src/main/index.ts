@@ -10,6 +10,7 @@ import { clampTriggerHigh, type AppSettings } from '../shared/setup'
 import { RecordingService } from './capture/service'
 import { assistant, chatHistory, savedChats, stopAssistant, streamChatTurn } from './assistant'
 import { configureRuntime } from './runtime'
+import { assistantConfig } from './deployment'
 
 if (process.env.OJOS_USER_DATA) app.setPath('userData', process.env.OJOS_USER_DATA)
 if (!app.requestSingleInstanceLock()) app.quit()
@@ -155,6 +156,8 @@ async function nudge(interval?: Interval): Promise<void> {
  * the agent sees the user's apps, not the Ojos panel. Returns undefined if capture is unavailable.
  */
 async function freshStill(): Promise<string | undefined> {
+  const startedUs = Math.round(performance.now() * 1000)
+  if (__OJOS_DEV__ && capture?.canUseScreenEvidence(startedUs) === false) return undefined
   try {
     const target = configuredDisplay() ?? screen.getPrimaryDisplay()
     const scale = Math.min(1, 1600 / target.size.width)
@@ -162,6 +165,7 @@ async function freshStill(): Promise<string | undefined> {
       types: ['screen'],
       thumbnailSize: { width: Math.round(target.size.width * scale), height: Math.round(target.size.height * scale) }
     })
+    if (__OJOS_DEV__ && capture?.canUseScreenEvidence(startedUs) === false) return undefined
     const source = sources.find((item) => item.display_id === String(target.id)) ?? sources[0]
     if (!source || source.thumbnail.isEmpty()) return undefined
     for (const quality of [80, 60, 40]) {
@@ -488,12 +492,24 @@ ipcMain.handle('settings:get', (event): AppSettings => {
   requireSettings(event)
   const status = capture?.status() ?? { recording: false, camera: false, calibration: null, confusion: 'stopped' }
   const key = Boolean(process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim())
-  const remote = Boolean(process.env.OJOS_ASSISTANT_URL && process.env.OJOS_LOCAL_TOKEN)
-  return {
-    ...status, sensitivity: triggerHigh(), screenPermission: permission('screen'),
-    clipAssistant: process.env.OJOS_ASSISTANT_URL ? (remote ? 'remote' : 'unconfigured') : key ? 'local' : 'unconfigured',
-    chatConfigured: key
-  }
+  let clipAssistant: AppSettings['clipAssistant'] = 'unconfigured'
+  let chatConfigured = false
+  try {
+    const { scope } = assistantConfig()
+    clipAssistant = scope === 'local' ? (key ? 'local' : 'unconfigured') : 'remote'
+    chatConfigured = key || scope === 'dev' || scope === 'prod'
+  } catch { /* Settings can still open with an incomplete deployment configuration. */ }
+  return { ...status, sensitivity: triggerHigh(), screenPermission: permission('screen'), clipAssistant, chatConfigured }
+})
+if (__OJOS_DEV__) ipcMain.handle('settings:vision-debug', async (event) => {
+  requireSettings(event)
+  const snapshot = await capture?.visionDebugSnapshot(event.sender)
+  requireSettings(event)
+  return snapshot ?? null
+})
+if (__OJOS_DEV__) ipcMain.handle('settings:vision-debug-stop', (event) => {
+  requireSettings(event)
+  capture?.stopVisionDebug(event.sender)
 })
 ipcMain.handle('settings:sensitivity', (event, value: number) => {
   requireSettings(event)
@@ -582,7 +598,7 @@ app.whenReady().then(() => {
   if (process.platform === 'darwin') {
     app.dock?.setIcon(nativeImage.createFromPath(join(app.getAppPath(), 'resources', 'icon.png')))
   } else if (process.platform === 'win32' && app.isPackaged) {
-    app.setAppUserModelId('com.ojos.desktop')
+    app.setAppUserModelId(__OJOS_DEV__ ? 'com.ojos.desktop.dev' : 'com.ojos.desktop')
     const options = { program: process.execPath, iconPath: process.execPath, iconIndex: 0 }
     if (!app.setUserTasks([
       { ...options, arguments: '--settings', title: 'Settings', description: 'Open Ojos Settings.' },

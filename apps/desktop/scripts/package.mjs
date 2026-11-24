@@ -8,6 +8,7 @@ const mac = process.platform === 'darwin' && process.arch === 'arm64'
 if (!windows && !mac) throw new Error('Build the installer on Windows x64 or Apple Silicon macOS.')
 if (!process.env.OJOS_RUNTIME_DIR) throw new Error('Set OJOS_RUNTIME_DIR to the staged portable Python and FFmpeg runtime.')
 
+const development = process.argv.includes('--dev')
 const app = resolve(import.meta.dirname, '..')
 const repo = resolve(app, '../..')
 const runtime = resolve(process.env.OJOS_RUNTIME_DIR)
@@ -38,14 +39,16 @@ await build({
   projectDir: app,
   targets: windows ? Platform.WINDOWS.createTarget('nsis', Arch.x64) : Platform.MAC.createTarget('dmg', Arch.arm64),
   config: {
-    appId: 'com.ojos.desktop',
-    productName: 'Ojos',
-    directories: { output: process.env.OJOS_INSTALL_OUTPUT ?? 'release' },
+    appId: development ? 'com.ojos.desktop.dev' : 'com.ojos.desktop',
+    productName: development ? 'Ojos Dev' : 'Ojos',
+    extraMetadata: development ? { name: 'ojos-desktop-dev' } : undefined,
+    directories: { output: process.env.OJOS_INSTALL_OUTPUT ?? (development ? 'release-dev' : 'release') },
     files: ['out/**', 'resources/**', 'package.json', '!**/.env*'],
     extraResources: [
       { from: runtime, to: 'ojos/runtime', filter: ['bin/**', 'python/**', '!**/.env*', '!**/__pycache__/**'] },
       { from: repo, to: 'ojos', filter: [
         'agentic_system/assistant/*.py', '!agentic_system/assistant/test_*.py',
+        'agentic_system/assistant/skills/*.md',
         'models/vision/native_worker.py',
         'models/confusion/runtime.py', 'models/confusion/intervals.py', 'models/confusion/preprocess.py',
         'models/eye-tracking/experiments/eth-xgaze/bench.py'
