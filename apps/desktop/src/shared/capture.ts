@@ -45,6 +45,13 @@ export type VisionExport = {
     samples: VisionSample[]
   }
 }
+export type VisionDebugSnapshot = {
+  startUs: number
+  endUs: number
+  camera?: { timeUs: number; jpeg: string }
+  gaze: VisionExport['gaze']
+  intervals: Interval[]
+}
 export type ViewportRect = { x: number; y: number; w: number; h: number }
 export type VisionSample = {
   time_us: number

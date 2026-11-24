@@ -350,6 +350,13 @@ export class RecordingService {
     clearInterval(this.#monitor)
   }
 
+  async visionDebugSnapshot() {
+    const active = this.#active
+    if (!__OJOS_DEV__ || active?.spec.mode !== 'record' || active.win.isDestroyed()) return null
+    const snapshot = await active.win.webContents.executeJavaScript('window.visionDebugSnapshot?.()')
+    return this.#active === active ? snapshot : null
+  }
+
   async gazedAtPane(interval: Interval, pane: ViewportRect, threshold: number): Promise<boolean> {
     const active = this.#active
     if (active?.spec.mode !== 'record' || interval.session_id !== active.spec.sessionId ||

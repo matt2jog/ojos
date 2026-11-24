@@ -9,8 +9,11 @@ delete process.env.ELECTRON_RUN_AS_NODE
 const repoRoot = resolve(__dirname, '../..')
 const vision = resolve(repoRoot, 'models/vision')
 
-export default defineConfig({
+const buildFlags = (mode: string) => ({ __OJOS_DEV__: JSON.stringify(mode === 'development') })
+
+export default defineConfig(({ mode }) => ({
   main: {
+    define: buildFlags(mode),
     resolve: { alias: {
       '@vision': vision,
       '@recorder': resolve(repoRoot, 'agentic_system/capture/recorder.cjs'),
@@ -19,12 +22,14 @@ export default defineConfig({
     build: { commonjsOptions: { include: [/node_modules/, /recorder\.cjs$/] } }
   },
   preload: {
+    define: buildFlags(mode),
     build: { rollupOptions: { input: {
       index: resolve(__dirname, 'src/preload/index.ts'),
       capture: resolve(__dirname, 'src/preload/capture.ts')
     } } }
   },
   renderer: {
+    define: buildFlags(mode),
     plugins: [react()],
     resolve: {
       // Matt's headless vision modules (calibration, session, sidecar export) are imported as-is.
@@ -51,4 +56,4 @@ export default defineConfig({
       }
     }
   }
-})
+}))

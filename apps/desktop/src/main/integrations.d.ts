@@ -1,6 +1,6 @@
 declare module '@assistant' {
   export function analyzeBundle(options: {
-    manifest: unknown; gaze: unknown; video: Uint8Array; token: string; baseUrl: string; signal: AbortSignal
+    manifest: unknown; gaze: unknown; video: Uint8Array; token: string; baseUrl: string; cloud?: boolean; signal: AbortSignal
   }): Promise<{ suspected_confusion: string; possible_questions: string[]; summary: string }>
 }
 

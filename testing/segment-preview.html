@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ojos live segment</title>
+<style>
+  :root { color-scheme: dark; font: 16px/1.5 system-ui, sans-serif; background: #15171a; color: #f3f4f5; }
+  body { margin: 0; padding: 24px; }
+  header { max-width: 1120px; margin: 0 auto 16px; }
+  h1 { margin: 0; font-size: 1.35rem; font-weight: 650; }
+  p { margin: 4px 0 0; color: #c9cdd4; }
+  #player { position: relative; max-width: 1120px; margin: auto; }
+  video { display: block; width: 100%; background: #08090a; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+</style>
+<header>
+  <h1 id="heading">Ojos live segment</h1>
+  <p id="status" aria-live="polite">Waiting for the next automatic clip…</p>
+</header>
+<main id="player" hidden>
+  <video controls playsinline aria-label="Captured display and playback audio"></video>
+  <canvas aria-label="Confusion scores and gaze overlays"></canvas>
+</main>
+<script type="module">
+const video = document.querySelector('video');
+const canvas = document.querySelector('canvas');
+const draw = canvas.getContext('2d');
+const player = document.querySelector('#player');
+const status = document.querySelector('#status');
+let clip;
+
+function dot(x, y, color, radius) {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+  draw.beginPath();
+  draw.arc(x, y, radius, 0, Math.PI * 2);
+  draw.fillStyle = color;
+  draw.strokeStyle = '#101214';
+  draw.fill();
+  draw.stroke();
+}
+
+function paint() {
+  if (!clip?.gaze || !video.videoWidth) return;
+  const { manifest, gaze } = clip;
+  const width = video.videoWidth;
+  const height = video.videoHeight;
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+  const unit = Math.min(width / 960, height / 540);
+  const now = video.currentTime * 1e6;
+  const samples = gaze.samples;
+  const current = samples.findLast((point) => point.time_us <= now && now - point.time_us <= 250_000);
+  const scaleX = width / (gaze.viewport_width_px || width);
+  const scaleY = height / (gaze.viewport_height_px || height);
+  draw.clearRect(0, 0, width, height);
+  draw.lineWidth = 2 * unit;
+
+  if (current) {
+    const { maxbox, average_x, average_y, x_model1, y_model1, x_model2, y_model2 } = current;
+    if (maxbox) {
+      draw.strokeStyle = '#f4f4f5cc';
+      draw.setLineDash([5 * unit, 3 * unit]);
+      draw.strokeRect(maxbox.x * scaleX, maxbox.y * scaleY, maxbox.w * scaleX, maxbox.h * scaleY);
+      draw.setLineDash([]);
+    }
+    if (Number.isFinite(average_x) && Number.isFinite(average_y)) {
+      for (let row = -6; row <= 6; row++) {
+        for (let col = -6; col <= 6; col++) {
+          const distance = Math.hypot(col, row);
+          if (distance > 6 || (row + col) % 2) continue;
+          draw.fillStyle = `rgba(218,220,224,${0.65 - distance * 0.09})`;
+          draw.fillRect(average_x * scaleX + col * 3 * unit, average_y * scaleY + row * 3 * unit, 2 * unit, 2 * unit);
+        }
+      }
+    }
+    if (Number.isFinite(x_model1) && Number.isFinite(y_model1)) dot(x_model1 * scaleX, y_model1 * scaleY, '#70d6ff', 4 * unit);
+    if (Number.isFinite(x_model2) && Number.isFinite(y_model2)) dot(x_model2 * scaleX, y_model2 * scaleY, '#ffdb8b', 4 * unit);
+    if (Number.isFinite(average_x) && Number.isFinite(average_y)) dot(average_x * scaleX, average_y * scaleY, '#f4f4f5', 3 * unit);
+  }
+
+  const x = width - 292 * unit;
+  const y = 12 * unit;
+  const left = x + 33 * unit;
+  const top = y + 41 * unit;
+  const plotWidth = 235 * unit;
+  const plotHeight = 64 * unit;
+  const duration = Math.max(1, manifest.clip_end_us - manifest.clip_start_us);
+  const position = (time) => left + Math.min(1, Math.max(0, time / duration)) * plotWidth;
+  draw.fillStyle = '#15171ae8';
+  draw.fillRect(x, y, 280 * unit, 135 * unit);
+  draw.font = `600 ${14 * unit}px system-ui`;
+  draw.fillStyle = '#ffffff';
+  const score = Number.isFinite(current?.confidence) ? current.confidence.toFixed(2) : 'NaN';
+  draw.fillText(`Confusion  ${score}`, x + 12 * unit, y + 23 * unit);
+  const start = position(manifest.event_start_us - manifest.clip_start_us);
+  const end = position(manifest.event_end_us - manifest.clip_start_us);
+  draw.fillStyle = '#cd8c3d55';
+  draw.fillRect(start, top, Math.max(0, end - start), plotHeight);
+  draw.strokeStyle = '#8792a6';
+  draw.lineWidth = unit;
+  draw.strokeRect(left, top, plotWidth, plotHeight);
+
+  for (const [key, color] of [['confidence_raw', '#9aa6ba'], ['confidence', '#e5f0ff']]) {
+    draw.beginPath();
+    let connected = false;
+    for (const point of samples) {
+      if (point.time_us > now) break;
+      if (!Number.isFinite(point[key])) { connected = false; continue; }
+      const args = [position(point.time_us), top + (1 - point[key]) * plotHeight];
+      if (connected) draw.lineTo(...args);
+      else draw.moveTo(...args);
+      connected = true;
+    }
+    draw.strokeStyle = color;
+    draw.stroke();
+  }
+  draw.font = `${11 * unit}px system-ui`;
+  draw.fillStyle = '#e3e7ee';
+  draw.fillText('1', x + 16 * unit, top + 5 * unit);
+  draw.fillText('0', x + 16 * unit, top + plotHeight);
+  draw.fillText('Shaded · detected interval', left, top + plotHeight + 19 * unit);
+}
+
+async function refresh() {
+  try {
+    const latest = await fetch('clip', { cache: 'no-store' }).then((response) => response.json());
+    if (!latest || latest.id === clip?.id) return;
+    clip = latest;
+    video.src = `video?id=${encodeURIComponent(clip.id)}`;
+    player.hidden = false;
+    video.play().catch(() => {});
+    if (clip.replay) {
+      const title = 'Ojos annotated replay';
+      document.title = title;
+      document.querySelector('#heading').textContent = title;
+      canvas.hidden = true;
+      status.textContent = `${clip.replay} · Peak confusion ${clip.score.toFixed(2)}`;
+      return;
+    }
+    const audio = clip.manifest.audio_status === 'present' ? 'Playback audio available.' : 'Playback audio unavailable.';
+    status.textContent = `Blue · WebEyeTrack  |  Gold · ETH-XGaze  |  Gray · mean and bounds. ${audio} Camera boxes are available in saved replays.`;
+  } finally {
+    setTimeout(() => void refresh().catch(() => {}), 600);
+  }
+}
+
+if (video.requestVideoFrameCallback) {
+  function frame() { paint(); video.requestVideoFrameCallback(frame); }
+  video.requestVideoFrameCallback(frame);
+}
+for (const event of ['loadeddata', 'timeupdate', 'seeked']) video.addEventListener(event, paint);
+void refresh().catch(() => {});
+</script>
+</html>

@@ -10,6 +10,7 @@ import { clampTriggerHigh, type AppSettings } from '../shared/setup'
 import { RecordingService } from './capture/service'
 import { assistant, chatHistory, savedChats, stopAssistant, streamChatTurn } from './assistant'
 import { configureRuntime } from './runtime'
+import { assistantConfig } from './deployment'
 
 if (process.env.OJOS_USER_DATA) app.setPath('userData', process.env.OJOS_USER_DATA)
 if (!app.requestSingleInstanceLock()) app.quit()
@@ -488,12 +489,20 @@ ipcMain.handle('settings:get', (event): AppSettings => {
   requireSettings(event)
   const status = capture?.status() ?? { recording: false, camera: false, calibration: null, confusion: 'stopped' }
   const key = Boolean(process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim())
-  const remote = Boolean(process.env.OJOS_ASSISTANT_URL && process.env.OJOS_LOCAL_TOKEN)
-  return {
-    ...status, sensitivity: triggerHigh(), screenPermission: permission('screen'),
-    clipAssistant: process.env.OJOS_ASSISTANT_URL ? (remote ? 'remote' : 'unconfigured') : key ? 'local' : 'unconfigured',
-    chatConfigured: key
-  }
+  let clipAssistant: AppSettings['clipAssistant'] = 'unconfigured'
+  let chatConfigured = false
+  try {
+    const { scope } = assistantConfig()
+    clipAssistant = scope === 'local' ? (key ? 'local' : 'unconfigured') : 'remote'
+    chatConfigured = key || scope === 'dev' || scope === 'prod'
+  } catch { /* Settings can still open with an incomplete deployment configuration. */ }
+  return { ...status, sensitivity: triggerHigh(), screenPermission: permission('screen'), clipAssistant, chatConfigured }
+})
+if (__OJOS_DEV__) ipcMain.handle('settings:vision-debug', async (event) => {
+  requireSettings(event)
+  const snapshot = await capture?.visionDebugSnapshot()
+  requireSettings(event)
+  return snapshot ?? null
 })
 ipcMain.handle('settings:sensitivity', (event, value: number) => {
   requireSettings(event)

@@ -1,0 +1,8 @@
+**
+!Dockerfile
+!agentic_system/
+!agentic_system/assistant/
+!agentic_system/assistant/**
+**/.env*
+**/__pycache__/
+agentic_system/assistant/test_*.py

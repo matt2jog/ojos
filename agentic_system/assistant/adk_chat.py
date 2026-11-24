@@ -127,8 +127,10 @@ def _web_input(value, limit):
 
 
 class ChatService:
-    def __init__(self, api_key, model, database, roots):
+    def __init__(self, api_key, model, database, roots, *, relay_url="", cloud_token=""):
         self.api_key = api_key
+        self.relay_url = relay_url
+        self.cloud_token = cloud_token
         self.model = model
         self.store = ChatStore(database)
         self.files = FileTools(roots)
@@ -147,7 +149,11 @@ class ChatService:
 
     @asynccontextmanager
     async def client(self):
-        sdk = genai.Client(api_key=self.api_key, vertexai=False, http_options=types.HttpOptions(timeout=25_000))
+        options = types.HttpOptions(timeout=25_000)
+        if self.relay_url:
+            options.base_url = self.relay_url
+            options.headers = {"Authorization": f"Bearer {self.cloud_token}"}
+        sdk = genai.Client(api_key=self.api_key, vertexai=False, http_options=options)
         async with sdk.aio as client:
             yield sdk, client
 
@@ -386,7 +392,11 @@ class ChatService:
             )
             # Generative UI (A2UI): a skill plus the Decisions API decide whether an interface is
             # warranted; anything but "none" unlocks render_ui and the Ojos component catalog.
-            ui = await asyncio.to_thread(decide_ui, self.api_key, jpeg, question)
+            if self.relay_url:
+                ui = await asyncio.to_thread(decide_ui, self.api_key, jpeg, question,
+                                             relay_url=self.relay_url, cloud_token=self.cloud_token)
+            else:
+                ui = await asyncio.to_thread(decide_ui, self.api_key, jpeg, question)
             emit("turn.ui", ui)
             ui_tools = []
             if ui["kind"] != "none":

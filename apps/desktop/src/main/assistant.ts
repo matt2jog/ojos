@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import type { A2uiPayload, ChatHistory, DrawCmd, SavedChat, UiDecision } from '../shared/commands'
 import { project, python } from './runtime'
+import { assistantConfig } from './deployment'
 
 let child: ChildProcess | undefined
 let connection: Promise<{ baseUrl: string; token: string }> | undefined
@@ -31,22 +32,18 @@ function localAssistant(): Promise<{ baseUrl: string; token: string }> {
   return connection
 }
 
-export async function assistant(): Promise<{ baseUrl: string; token: string }> {
-  const remote = process.env.OJOS_ASSISTANT_URL
-  if (remote) {
-    const url = new URL(remote)
-    if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname))) {
-      throw new Error('Assistant endpoints must use HTTPS or loopback HTTP.')
-    }
-    const token = process.env.OJOS_LOCAL_TOKEN
-    if (!token) throw new Error('The configured assistant needs OJOS_LOCAL_TOKEN.')
-    return { baseUrl: url.href, token }
-  }
-  return localAssistant()
+export async function assistant(): Promise<{ baseUrl: string; token: string; cloud?: boolean }> {
+  const config = assistantConfig()
+  if (config.scope === 'local') return localAssistant()
+  return { baseUrl: config.baseUrl, token: config.token, cloud: config.scope !== 'remote' }
 }
 
 async function startLocal(): Promise<{ baseUrl: string; token: string }> {
-  if (!process.env.GEMINI_API_KEY && !process.env.GOOGLE_API_KEY) throw new Error('Set GEMINI_API_KEY to start the live local assistant.')
+  const config = assistantConfig()
+  const cloud = config.scope === 'dev' || config.scope === 'prod' ? config : undefined
+  if (!cloud && !process.env.GEMINI_API_KEY?.trim() && !process.env.GOOGLE_API_KEY?.trim()) {
+    throw new Error('Set GEMINI_API_KEY to start the live local assistant.')
+  }
   const port = await freePort()
   if (closed) throw new Error('The assistant has stopped.')
   const baseUrl = `http://127.0.0.1:${port}`
@@ -56,10 +53,13 @@ async function startLocal(): Promise<{ baseUrl: string; token: string }> {
   const inbox = join(home, 'chat-files')
   await mkdir(inbox, { recursive: true })
   const processHandle = spawn(python('assistant'), [
-    '-B', '-m', 'agentic_system.assistant', 'serve', '--port', String(port), '--chat-db', join(home, 'chat.sqlite3')
+    '-B', '-m', 'agentic_system.assistant', 'serve', '--port', String(port), '--chat-db', join(home, 'chat.sqlite3'),
+    ...(cloud ? ['--chat-only'] : [])
   ], {
     cwd: project(), env: {
-      ...process.env, OJOS_LOCAL_TOKEN: token, OJOS_CHAT_ROOTS: process.env.OJOS_CHAT_ROOTS ?? inbox
+      ...process.env, OJOS_LOCAL_TOKEN: token, OJOS_CHAT_ROOTS: process.env.OJOS_CHAT_ROOTS ?? inbox,
+      OJOS_MODEL_RELAY_URL: cloud ? new URL('/gemini', cloud.baseUrl).href : '',
+      OJOS_CLOUD_TOKEN: cloud?.token ?? ''
     }, windowsHide: true, stdio: 'ignore'
   })
   child = processHandle

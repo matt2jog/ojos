@@ -1,5 +1,5 @@
 // Types shared by the setup window (renderer) and the main process.
-import type { CalibrationReady, CalibrationStage, Observation } from './capture'
+import type { CalibrationReady, CalibrationStage, Observation, VisionDebugSnapshot } from './capture'
 
 export type PermissionKind = 'camera' | 'screen' | 'audio'
 export type PermissionState = 'granted' | 'denied' | 'restricted' | 'not-determined' | 'unknown'
@@ -48,6 +48,7 @@ export interface SetupApi {
   fullscreen(displayId: string | null): Promise<void>
   finish(): Promise<void>
   settings(): Promise<AppSettings>
+  visionDebug?(): Promise<VisionDebugSnapshot | null>
   setSensitivity(high: number): Promise<void>
   closeSettings(): Promise<void>
   settingsSetup(view: 'calibrate' | 'welcome'): Promise<void>
